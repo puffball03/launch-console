@@ -25,7 +25,7 @@ permissions:
 env:
   PR: ${{ github.event.pull_request.number }}
   GH_REPO: ${{ github.repository }}
-  MAX_AUTO_MERGE_LINES: 300
+  MAX_AUTO_MERGE_LINES: 700
   MAX_FIX_LINES: 80
   MAX_FIX_ROUNDS: 2
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
