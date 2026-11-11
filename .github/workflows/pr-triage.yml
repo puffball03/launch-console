@@ -42,6 +42,7 @@ jobs:
       fix_allowed: ${{ steps.g.outputs.fix_allowed }}
       merge_allowed: ${{ steps.g.outputs.merge_allowed }}
       notes: ${{ steps.g.outputs.notes }}
+      agent_ready: ${{ steps.g.outputs.agent_ready }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,6 +52,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BASE_REF: ${{ github.base_ref }}
           HAS_BOT_TOKEN: ${{ secrets.TRIAGE_BOT_TOKEN != '' }}
+          HAS_CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
         run: |
           set -euo pipefail
           pr=$(gh pr view "$PR" --json files,additions,deletions,commits)
@@ -87,6 +89,7 @@ jobs:
             echo "mode=$mode"
             echo "fix_allowed=$fix_allowed"
             echo "merge_allowed=$merge_allowed"
+            echo "agent_ready=$HAS_CLAUDE_TOKEN"
             if [ ${#notes[@]} -gt 0 ]; then
               joined=$(printf '%s; ' "${notes[@]}"); echo "notes=${joined%; }"
             else
@@ -136,6 +139,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - id: triage
+        if: needs.gate.outputs.agent_ready == 'true'
         continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
@@ -152,14 +156,27 @@ jobs:
       - id: decide
         env:
           RESULT: ${{ steps.triage.outputs.structured_output }}
+          TRIAGE_OUTCOME: ${{ steps.triage.outcome }}
+          AGENT_READY: ${{ needs.gate.outputs.agent_ready }}
           MODE: ${{ needs.gate.outputs.mode }}
           FIX_ALLOWED: ${{ needs.gate.outputs.fix_allowed }}
           MERGE_ALLOWED: ${{ needs.gate.outputs.merge_allowed }}
           GUARD_NOTES: ${{ needs.gate.outputs.notes }}
         run: |
           set -euo pipefail
+          reviewed=true
           if ! jq -e '.decision' <<<"${RESULT:-null}" >/dev/null 2>&1; then
-            RESULT='{"decision":"escalate","risk":"high","summary":"Triage agent failed","findings":[],"fix_plan":"","comment_markdown":"The triage agent did not return a verdict. See the workflow run for details."}'
+            reviewed=false
+            if [ "$AGENT_READY" != true ]; then
+              # shellcheck disable=SC2016
+              why='The triage agent did not run: the `CLAUDE_CODE_OAUTH_TOKEN` secret is not set. Add it (see `.github/triage/README.md`), then re-run this workflow.'
+            elif [ "$TRIAGE_OUTCOME" = failure ]; then
+              why="The triage agent failed before returning a verdict. Check the [run]($RUN_URL) for the error, then re-run this workflow."
+            else
+              why="The triage agent finished without returning a verdict. Check the [run]($RUN_URL), then re-run this workflow."
+            fi
+            RESULT=$(jq -n --arg why "$why" \
+              '{decision: "escalate", risk: "not assessed", summary: "Triage agent did not review this PR", findings: [], fix_plan: "", comment_markdown: ("Nothing was reviewed, so this PR needs a human.\n\n" + $why)}')
           fi
           decision=$(jq -r .decision <<<"$RESULT")
           risk=$(jq -r .risk <<<"$RESULT")
@@ -178,6 +195,7 @@ jobs:
             fix)      header="## 🔧 Triage: small problems, agent is fixing" ;;
             escalate) header="## 🧑‍🚀 Triage: needs human review" ;;
           esac
+          [ "$reviewed" = true ] || header="## ⚠️ Triage: agent did not review this PR"
           d=$(openssl rand -hex 16)
           {
             echo "decision=$decision"
