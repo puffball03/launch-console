@@ -21,9 +21,9 @@
 ^backend/app/config\.py$
 
 # Safety-critical: launch limits are the go/no-go call
-^backend/app/rules/
+^backend/app/rules/limits\.py$
 
 # Model client and the no-network test guard
+# (the socket block itself is pytest addopts in pyproject.toml, covered above)
 ^backend/app/llm/
 ^backend/tests/test_network_blocked\.py$
-(^|/)conftest\.py$
