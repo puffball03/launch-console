@@ -46,3 +46,9 @@ def test_defaults_for_models_and_db_path():
     assert settings.model_fast == "claude-haiku-5-5"
     assert settings.model_smart == "claude-sonnet-5-5"
     assert settings.db_path == "/data/mission.db"
+
+
+def test_one_deployment_may_serve_both_roles():
+    settings = load_settings({"MODEL_FAST": "mc-shared", "MODEL_SMART": "mc-shared"})
+
+    assert settings.model_fast == settings.model_smart == "mc-shared"
