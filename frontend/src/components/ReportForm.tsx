@@ -6,6 +6,7 @@ type Props = {
   onFiled: (id: number) => void;
 };
 
+const NAME_MAX_CHARS = 100;
 const NOTE_MAX_CHARS = 2000;
 
 const EMPTY = {
@@ -34,6 +35,9 @@ function validate(values: Values): FieldErrors {
   const errors: FieldErrors = {};
   for (const field of ["engineer_name", "station", "note"] as const) {
     if (!values[field].trim()) errors[field] = `${LABELS[field]} is required.`;
+  }
+  if (!errors.engineer_name && values.engineer_name.trim().length > NAME_MAX_CHARS) {
+    errors.engineer_name = `Name must be ${NAME_MAX_CHARS} characters or fewer.`;
   }
   if (!errors.note && values.note.trim().length > NOTE_MAX_CHARS) {
     errors.note = `Note must be ${NOTE_MAX_CHARS} characters or fewer.`;

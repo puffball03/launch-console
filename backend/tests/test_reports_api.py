@@ -56,6 +56,7 @@ def test_unknown_report_is_404(client):
         ({"wind_knots": -1}, "wind_knots", "Wind cannot be negative."),
         ({"fuel_pct": -5}, "fuel_pct", "Fuel cannot be negative."),
         ({"note": "x" * 2001}, "note", "Note must be 2000 characters or fewer."),
+        ({"engineer_name": "A" * 101}, "engineer_name", "Name must be 100 characters or fewer."),
     ],
 )
 def test_bad_input_gets_a_clear_message_for_that_field(client, overrides, field, message):

@@ -1,6 +1,11 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import App from "../App";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 test("renders the Mission Control console heading", () => {
   render(<App />);
@@ -11,7 +16,6 @@ test("renders the Mission Control console heading", () => {
 });
 
 test("filing a report selects it in the console", async () => {
-  const { default: userEvent } = await import("@testing-library/user-event");
   const user = userEvent.setup();
   vi.stubGlobal(
     "fetch",
@@ -28,5 +32,4 @@ test("filing a report selects it in the console", async () => {
   await user.click(screen.getByRole("button", { name: /file report/i }));
 
   expect(await screen.findByText(/report #42 filed/i)).toBeInTheDocument();
-  vi.unstubAllGlobals();
 });

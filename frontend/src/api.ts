@@ -22,9 +22,16 @@ export async function fileReport(report: ReportInput): Promise<FileResult> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(report),
   });
-  const body = await response.json();
   if (response.ok) {
+    const body = await response.json();
     return { ok: true, id: body.id, status: body.status };
   }
-  return { ok: false, errors: body.errors ?? {} };
+  // A proxy or crash can return text or HTML; only a rejected fetch means "could not reach".
+  const body = await response.json().catch(() => null);
+  const errors: FieldErrors = body?.errors ?? {};
+  if (Object.keys(errors).length === 0) {
+    const detail = typeof body?.detail === "string" ? body.detail : null;
+    errors._body = detail ?? `Server error (${response.status}).`;
+  }
+  return { ok: false, errors };
 }

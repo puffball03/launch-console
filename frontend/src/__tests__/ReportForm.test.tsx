@@ -203,3 +203,46 @@ test("the button is disabled while sending, so a report can't be filed twice", a
   finish(new Response(JSON.stringify({ id: 1, status: "processing" }), { status: 201 }));
   await vi.waitFor(() => expect(button).toBeEnabled());
 });
+
+test("a server error with a plain-text body is shown as a server error, not a network failure", async () => {
+  const user = userEvent.setup();
+  fetchMock.mockResolvedValueOnce(
+    new Response("Internal Server Error", { status: 500, headers: { "content-type": "text/plain" } }),
+  );
+  render(<ReportForm onFiled={() => {}} />);
+
+  await fillValidReport(user);
+  await user.click(screen.getByRole("button", { name: /file report/i }));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Server error (500).");
+  expect(alert).not.toHaveTextContent(/could not reach/i);
+  expect(screen.getByLabelText(/note/i)).toHaveValue("LOX valve slow to close.");
+});
+
+test("a JSON error with only a detail message shows that message", async () => {
+  const user = userEvent.setup();
+  respondWith(404, { detail: "Not Found" });
+  render(<ReportForm onFiled={() => {}} />);
+
+  await fillValidReport(user);
+  await user.click(screen.getByRole("button", { name: /file report/i }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("Not Found");
+});
+
+test("a name over 100 characters is caught before sending", async () => {
+  const user = userEvent.setup();
+  render(<ReportForm onFiled={() => {}} />);
+
+  await fillValidReport(user);
+  await user.clear(screen.getByLabelText(/name/i));
+  await user.click(screen.getByLabelText(/name/i));
+  await user.paste("A".repeat(101));
+  await user.click(screen.getByRole("button", { name: /file report/i }));
+
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(screen.getByLabelText(/name/i)).toHaveAccessibleDescription(
+    "Name must be 100 characters or fewer.",
+  );
+});

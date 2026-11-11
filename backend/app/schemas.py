@@ -3,6 +3,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, StringConstraints
 
 STATIONS = ("PROP", "GNC", "TELEM", "RANGE", "WX")
+NAME_MAX_CHARS = 100
 NOTE_MAX_CHARS = 2000
 
 Station = Literal["PROP", "GNC", "TELEM", "RANGE", "WX"]
@@ -12,7 +13,7 @@ NonNegativeReading = Annotated[float, Field(strict=True, allow_inf_nan=False, ge
 
 
 class ReportIn(BaseModel):
-    engineer_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    engineer_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=NAME_MAX_CHARS)]
     station: Station
     wind_knots: NonNegativeReading
     temp_c: Reading
