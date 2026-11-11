@@ -2,7 +2,7 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.schemas import NOTE_MAX_CHARS, STATIONS
+from app.schemas import NAME_MAX_CHARS, NOTE_MAX_CHARS, STATIONS
 
 LABELS = {
     "engineer_name": "Name",
@@ -13,13 +13,15 @@ LABELS = {
     "note": "Note",
 }
 
+MAX_CHARS = {"engineer_name": NAME_MAX_CHARS, "note": NOTE_MAX_CHARS}
+
 
 def _message(field: str, error_type: str, fallback: str) -> str:
     label = LABELS.get(field, field)
     if error_type in ("missing", "string_too_short"):
         return f"{label} is required."
-    if error_type == "string_too_long" and field == "note":
-        return f"Note must be {NOTE_MAX_CHARS} characters or fewer."
+    if error_type == "string_too_long" and field in MAX_CHARS:
+        return f"{label} must be {MAX_CHARS[field]} characters or fewer."
     if error_type == "literal_error":
         return f"{label} must be one of {', '.join(STATIONS)}."
     if error_type in ("float_type", "finite_number", "float_parsing"):
