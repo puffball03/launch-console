@@ -115,7 +115,7 @@ backend/
     config.py          env settings
     db.py              sqlite connection + schema migration
     repository.py      reports / briefings / trace_steps CRUD
-    schemas.py         Pydantic: ReportIn, Sort, CheckResult, Briefing, Review
+    schemas.py         Pydantic: ReportIn (API input)
     rules/limits.py    pure verdict
     rules/brief_by.py  pure severity→minutes
     rules/injection.py deterministic pre-screen
@@ -123,7 +123,9 @@ backend/
     llm/base.py        LLMClient protocol, LLMResult
     llm/fake.py        FakeLLM (scripted per step + keyword demo mode)
     llm/foundry.py     FoundryClient (anthropic SDK Foundry client)
-    pipeline/          sort.py, checks.py, draft_loop.py, run.py (orchestrator + tracing)
+    pipeline/          sort.py, checks.py, draft_loop.py, run.py (orchestrator + tracing);
+                       each step's model schema (Sort, CheckResult, Briefing, Review) lives in its own file
+                       prompting.py: wrap_note() + UNTRUSTED_NOTE_RULE, shared by every model step
     api/               reports.py, briefings.py, health.py
   tests/
 frontend/
