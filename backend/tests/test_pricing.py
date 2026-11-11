@@ -93,3 +93,40 @@ def test_total_refuses_floats_so_rounding_errors_cannot_creep_in():
 
     with pytest.raises(TypeError):
         total_cost([0.1, 0.2])
+
+
+def test_sonnet_has_no_long_prompt_rate():
+    # 200,000 x $2/M, verified against the pricing page: no long-context tier for Sonnet 5.5
+    assert cost_usd("claude-sonnet-5-5", input_tokens=200_000, output_tokens=0) == Decimal("0.4")
+
+
+def test_same_deployment_name_for_both_models_is_rejected():
+    from app.config import Settings
+    from app.pricing import aliases_from_settings
+
+    settings = Settings(
+        llm_provider="fake",
+        foundry_api_key="",
+        foundry_resource="",
+        model_fast="mc-shared",
+        model_smart="mc-shared",
+        db_path="unused.db",
+    )
+
+    with pytest.raises(ValueError, match="MODEL_FAST and MODEL_SMART"):
+        aliases_from_settings(settings)
+
+
+@pytest.mark.parametrize(
+    "partial",
+    [
+        {"long_prompt_over": 100_000},
+        {"long_prompt_over": 100_000, "long_input": Decimal("0.5")},
+        {"long_input": Decimal("0.5"), "long_output": Decimal("2.5")},
+    ],
+)
+def test_long_prompt_fields_must_be_set_together(partial):
+    from app.pricing import Price
+
+    with pytest.raises(ValueError, match="long-prompt"):
+        Price(input=Decimal("0.1"), output=Decimal("0.5"), **partial)

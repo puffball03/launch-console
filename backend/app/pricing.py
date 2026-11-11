@@ -23,8 +23,17 @@ class Price:
     long_input: Decimal | None = None
     long_output: Decimal | None = None
 
+    def __post_init__(self) -> None:
+        long_fields = (self.long_prompt_over, self.long_input, self.long_output)
+        if any(f is None for f in long_fields) and any(f is not None for f in long_fields):
+            raise ValueError("Set all long-prompt fields together, or none of them")
 
-# Anthropic list prices; Claude on Microsoft Foundry bills at the same standard rates.
+
+# Source: https://platform.claude.com/docs/en/about-claude/pricing (checked 2026-11-11).
+# - Haiku 5.5 is priced by prompt length: prompts over 100,000 input tokens pay the higher rates.
+# - Sonnet 5.5 has no long-context tier; the full 1M context is billed at standard rates.
+# - Claude in Microsoft Foundry bills these standard USD rates (converted to CCUs at $0.01 each).
+#   Not modelled: the 1.1x US Data Zone multiplier, prompt caching and batch discounts.
 PRICES: dict[str, Price] = {
     FAST_MODEL: Price(
         input=Decimal("0.10"),
@@ -39,6 +48,8 @@ PRICES: dict[str, Price] = {
 
 def aliases_from_settings(settings: Settings) -> dict[str, str]:
     """Foundry deployment names map back to the model they serve."""
+    if settings.model_fast == settings.model_smart:
+        raise ValueError("MODEL_FAST and MODEL_SMART must name different deployments")
     return {settings.model_fast: FAST_MODEL, settings.model_smart: SMART_MODEL}
 
 

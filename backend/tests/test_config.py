@@ -46,3 +46,8 @@ def test_defaults_for_models_and_db_path():
     assert settings.model_fast == "claude-haiku-5-5"
     assert settings.model_smart == "claude-sonnet-5-5"
     assert settings.db_path == "/data/mission.db"
+
+
+def test_same_deployment_name_for_both_models_is_rejected_at_startup():
+    with pytest.raises(ValueError, match="MODEL_FAST and MODEL_SMART"):
+        load_settings({"MODEL_FAST": "mc-shared", "MODEL_SMART": "mc-shared"})
