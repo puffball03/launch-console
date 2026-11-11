@@ -58,27 +58,31 @@ jobs:
         run: gh pr merge "$PR" --disable-auto 2>/dev/null || true
       - id: g
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HAS_BOT_TOKEN: ${{ secrets.TRIAGE_BOT_TOKEN != '' }}
           HAS_CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
         run: |
           set -euo pipefail
-          pr=$(gh pr view "$PR" --json files,additions,deletions,commits)
-          jq -r '.files[].path' <<<"$pr" > "$RUNNER_TEMP/files.txt"
+          # From git, not the API: the API caps file and commit lists at 100.
+          range="origin/$BASE_REF...$HEAD_SHA"
+          git diff --name-only "$range" > "$RUNNER_TEMP/files.txt"
 
           # Read the base branch's list so a PR cannot loosen its own rules.
-          # No list on the base branch (e.g. the PR that adds it): treat everything as protected.
-          if git show "origin/$BASE_REF:.github/triage/protected-paths.txt" > "$RUNNER_TEMP/protected.txt" 2>/dev/null; then
+          # No list on the base branch (e.g. the PR that adds it) or no files: treat everything as protected.
+          if [ ! -s "$RUNNER_TEMP/files.txt" ]; then
+            protected="all files (could not list the PR's changed files)"
+          elif git show "origin/$BASE_REF:.github/triage/protected-paths.txt" > "$RUNNER_TEMP/protected.txt" 2>/dev/null; then
             grep -Ev '^[[:space:]]*(#|$)' "$RUNNER_TEMP/protected.txt" > "$RUNNER_TEMP/patterns.txt"
             protected=$(grep -Ef "$RUNNER_TEMP/patterns.txt" "$RUNNER_TEMP/files.txt" | paste -sd, - || true)
           else
             protected="all files (no protected-paths.txt on $BASE_REF)"
           fi
 
-          changed=$(jq '.additions + .deletions' <<<"$pr")
-          fix_rounds=$(jq '[.commits[] | select(.messageBody | contains("Triage-Fix:"))] | length' <<<"$pr")
-          head_is_fix=$(jq '.commits[-1].messageBody | contains("Triage-Fix:")' <<<"$pr")
+          changed=$(git diff --numstat "$range" | awk '{s+=$1+$2} END {print s+0}')
+          fix_rounds=$(git log --format=%B "origin/$BASE_REF..$HEAD_SHA" | grep -c '^Triage-Fix:' || true)
+          head_is_fix=false
+          git log -1 --format=%B "$HEAD_SHA" | grep -q '^Triage-Fix:' && head_is_fix=true
 
           mode=initial fix_allowed=true merge_allowed=true notes=()
           if [ "$head_is_fix" = true ]; then
@@ -198,6 +202,8 @@ jobs:
             override="agent chose merge at $risk risk"
           elif [ "$decision" = merge ] && [ "$MERGE_ALLOWED" != true ]; then
             override="auto-merge not allowed"
+          elif [ "$decision" = fix ] && [ "$risk" = high ]; then
+            override="agent chose fix at high risk"
           elif [ "$decision" = fix ] && [ "$FIX_ALLOWED" != true ]; then
             override="agent fixes not allowed"
           fi
@@ -262,6 +268,10 @@ jobs:
     if: needs.triage.outputs.decision == 'fix'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     steps:
       # The reviewed commit, with no credentials on disk for the agent to read.
       - uses: actions/checkout@v4
@@ -274,16 +284,24 @@ jobs:
         env:
           RESULT: ${{ needs.triage.outputs.result }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
+          # Snapshot before the agent runs: later steps use these, never the agent's working tree.
+          cp .github/triage/comment.sh "$RUNNER_TEMP/comment.sh"
+          sha256sum .git/config > "$RUNNER_TEMP/gitconfig.sha256"
+
           FIX_PLAN=$(jq -r .fix_plan <<<"$RESULT")
           FINDINGS=$(jq -r '.findings[] | "- [\(.severity)] \(.file):\(.line // "?") — \(.issue) → \(.recommendation)"' <<<"$RESULT")
-          export FIX_PLAN FINDINGS
+          # shellcheck disable=SC2016
+          PROTECTED_PATHS=$(git show "origin/$BASE_REF:.github/triage/protected-paths.txt" 2>/dev/null \
+            | grep -Ev '^[[:space:]]*(#|$)' | sed 's/^/- `/; s/$/`/' || true)
+          export FIX_PLAN FINDINGS PROTECTED_PATHS
           d=$(openssl rand -hex 16)
           {
             echo "text<<$d"
             # shellcheck disable=SC2016
-            envsubst '$PR_NUMBER $FIX_PLAN $FINDINGS $MAX_FIX_LINES' < .github/triage/fix-prompt.md
+            envsubst '$PR_NUMBER $FIX_PLAN $FINDINGS $MAX_FIX_LINES $PROTECTED_PATHS' < .github/triage/fix-prompt.md
             echo "$d"
             echo "schema=$(jq -c . .github/triage/fix-schema.json)"
           } >> "$GITHUB_OUTPUT"
@@ -304,9 +322,15 @@ jobs:
       - id: verify
         env:
           BASE_REF: ${{ github.base_ref }}
+          FIX: ${{ steps.fix.outputs.structured_output }}
         run: |
           set -uo pipefail
           fail() { echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=$1" >> "$GITHUB_OUTPUT"; echo "::error::$1"; exit 0; }
+          jq -e '(.commit_subject | length > 0) and (.commit_body | length > 0)' <<<"${FIX:-null}" >/dev/null 2>&1 \
+            || fail "the fix agent returned no commit message"
+          # Git config and hooks run code on later git commands; the agent must not touch them.
+          sha256sum --quiet -c "$RUNNER_TEMP/gitconfig.sha256" >/dev/null 2>&1 || fail "the fix agent changed .git/config"
+          [ -z "$(find .git/hooks -type f ! -name '*.sample' 2>/dev/null)" ] || fail "the fix agent added git hooks"
           git add -A
           files=$(git diff --cached --name-only)
           [ -n "$files" ] || fail "the fix agent made no changes"
@@ -323,14 +347,11 @@ jobs:
           docker compose run --rm test || fail "tests fail after the fix"
           echo "ok=true" >> "$GITHUB_OUTPUT"
 
-      - if: steps.verify.outputs.ok == 'true'
+      # No secrets in this step's environment.
+      - id: commit
+        if: steps.verify.outputs.ok == 'true'
         env:
-          # The bot token makes the push trigger this workflow again, so a fresh
-          # agent re-reviews the fix (pushes made with GITHUB_TOKEN trigger nothing).
-          GH_TOKEN: ${{ secrets.TRIAGE_BOT_TOKEN }}
-          HEAD_REF: ${{ github.head_ref }}
           FIX: ${{ steps.fix.outputs.structured_output }}
-          COMMENT: ${{ needs.triage.outputs.comment }}
         run: |
           set -euo pipefail
           {
@@ -343,29 +364,48 @@ jobs:
             echo
             echo "Triage-Fix: $RUN_URL"
           } > "$RUNNER_TEMP/msg.txt"
-          git -c user.name="pr-triage-agent" \
+          git -c core.hooksPath=/dev/null \
+              -c user.name="pr-triage-agent" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               commit -F "$RUNNER_TEMP/msg.txt"
-          sha=$(git rev-parse --short HEAD)
-          # Token only for this command. A plain push is fast-forward only, so it
-          # fails if the author pushed after the reviewed commit.
-          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      # The only step that sees the bot token. It makes the push trigger this
+      # workflow again, so a fresh agent re-reviews the fix (GITHUB_TOKEN pushes
+      # trigger nothing). A plain push is fast-forward only, so it fails if the
+      # author pushed after the reviewed commit.
+      - if: steps.verify.outputs.ok == 'true'
+        env:
+          BOT_TOKEN: ${{ secrets.TRIAGE_BOT_TOKEN }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          auth=$(printf 'x-access-token:%s' "$BOT_TOKEN" | base64 -w0)
           echo "::add-mask::$auth"
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
-            push origin "HEAD:refs/heads/$HEAD_REF"
+          git -c core.hooksPath=/dev/null -c core.fsmonitor=false \
+              -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
+              push origin "HEAD:refs/heads/$HEAD_REF"
+
+      - if: steps.verify.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT: ${{ needs.triage.outputs.comment }}
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          set -euo pipefail
           {
             printf '%s\n\n' "$COMMENT"
-            echo "### Fix commit $sha"
+            echo "### Fix commit $SHA"
             echo '```'
             cat "$RUNNER_TEMP/msg.txt"
             echo '```'
             echo "A fresh triage agent will now review this commit and either auto-merge or escalate."
           } > "$RUNNER_TEMP/body.md"
-          bash .github/triage/comment.sh triage:agent-fixed "$RUNNER_TEMP/body.md"
+          bash "$RUNNER_TEMP/comment.sh" triage:agent-fixed "$RUNNER_TEMP/body.md"
 
       - if: failure() || steps.verify.outputs.ok == 'false'
         env:
-          GH_TOKEN: ${{ secrets.TRIAGE_BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT: ${{ needs.triage.outputs.comment }}
           REASON: ${{ steps.verify.outputs.reason || 'the fix job failed' }}
         run: |
@@ -373,7 +413,11 @@ jobs:
             printf '%s\n\n' "$COMMENT"
             echo "> ⚠️ The agent tried to fix this but $REASON, so nothing was pushed. The findings above need a human."
           } > "$RUNNER_TEMP/body.md"
-          bash .github/triage/comment.sh triage:needs-human "$RUNNER_TEMP/body.md"
+          if [ -f "$RUNNER_TEMP/comment.sh" ]; then
+            bash "$RUNNER_TEMP/comment.sh" triage:needs-human "$RUNNER_TEMP/body.md"
+          else
+            gh pr comment "$PR" --body-file "$RUNNER_TEMP/body.md"
+          fi
 
   escalate:
     needs: triage

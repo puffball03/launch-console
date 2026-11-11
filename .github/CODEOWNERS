@@ -1,0 +1,3 @@
+# Changes to CI, the triage workflow and its guardrails need an owner's review.
+# Takes effect only with "Require review from Code Owners" on main's branch protection.
+/.github/ @puffball03
