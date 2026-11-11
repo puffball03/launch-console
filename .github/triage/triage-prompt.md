@@ -5,7 +5,7 @@ Your job is to review pull request #${PR_NUMBER} and choose exactly one decision
 ## The PR
 
 - Base: `origin/${BASE_REF}`; head is the current checkout.
-- Inspect it with `git diff origin/${BASE_REF}...HEAD`, `git log origin/${BASE_REF}..HEAD`, and by reading files. Read surrounding code, not only the hunks.
+- The full diff is in `.triage-context/pr.diff` and the commit log in `.triage-context/commits.txt`. Read those, then the changed files and the code around them, not only the hunks. You have no shell.
 - Mode: **${MODE}**. ${MODE_NOTE}
 - Fixing allowed: **${FIX_ALLOWED}**. Auto-merge allowed: **${MERGE_ALLOWED}**.
 - Guardrail notes from the workflow: ${GUARD_NOTES}
