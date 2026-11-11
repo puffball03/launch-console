@@ -13,13 +13,17 @@ The model proposes; the workflow decides. It can only make a decision more cauti
 
 | Guardrail | Effect |
 |---|---|
-| PR touches a path in `protected-paths.txt` (read from `main`) | always escalate |
+| PR touches a path in `protected-paths.txt` (read from `main`; missing there = everything protected) | always escalate |
 | More than 300 changed lines | no auto-merge |
 | Agent says `merge` at medium/high risk | escalate |
+| Merge verdict | auto-merge pinned to the reviewed commit; every new run or escalation cancels it |
 | Head commit is an agent fix (`Triage-Fix:` trailer) | re-review mode, no further fixes |
 | 2 agent fix commits already on the PR | no further fixes |
-| Fix touches protected paths, exceeds 80 lines, or tests fail | nothing pushed, escalate |
+| Fix touches protected paths, changes a binary file, exceeds 80 lines, or tests fail | nothing pushed, escalate |
+| Author pushed during the fix | push rejected (fast-forward only), escalate |
 | Agent errors or returns no verdict | escalate |
+
+No checkout keeps credentials on disk, so the agents cannot read a token from `.git/config`; the bot token is supplied only to the push command.
 
 Each outcome sets one label: `triage:auto-merge`, `triage:agent-fixed` or `triage:needs-human`.
 
@@ -31,6 +35,6 @@ Each outcome sets one label: `triage:auto-merge`, `triage:agent-fixed` or `triag
 
    To keep them in a local file: `cp .env.triage.example .env.triage`, fill it in, then `gh secret set -f .env.triage --repo puffball03/launch-console`. `.env.triage` is git- and Docker-ignored; keep it out of `.env`, which docker-compose loads into the app container.
 2. **Settings → General → Allow auto-merge**: on.
-3. **Branch protection on `main`**: require the `CI / test` status check. Auto-merge waits for it, so the agent can never merge a red PR.
+3. **Branch protection on `main`**: require the `test` status check (from the CI workflow). Auto-merge waits for it, so the agent can never merge a red PR.
 
 Tune limits in the workflow's `env:` block and the protected list in `protected-paths.txt`.

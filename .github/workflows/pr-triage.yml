@@ -37,6 +37,9 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       !github.event.pull_request.draft
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     outputs:
       mode: ${{ steps.g.outputs.mode }}
       fix_allowed: ${{ steps.g.outputs.fix_allowed }}
@@ -47,6 +50,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
+      # A new run means new commits or a fresh look: any earlier merge verdict is stale.
+      - name: Cancel earlier auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge "$PR" --disable-auto 2>/dev/null || true
       - id: g
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,11 +67,14 @@ jobs:
           pr=$(gh pr view "$PR" --json files,additions,deletions,commits)
           jq -r '.files[].path' <<<"$pr" > "$RUNNER_TEMP/files.txt"
 
-          # Prefer the base branch's list so a PR cannot loosen its own rules.
-          { git show "origin/$BASE_REF:.github/triage/protected-paths.txt" 2>/dev/null \
-            || cat .github/triage/protected-paths.txt; } \
-            | grep -Ev '^[[:space:]]*(#|$)' > "$RUNNER_TEMP/patterns.txt"
-          protected=$(grep -Ef "$RUNNER_TEMP/patterns.txt" "$RUNNER_TEMP/files.txt" | paste -sd, - || true)
+          # Read the base branch's list so a PR cannot loosen its own rules.
+          # No list on the base branch (e.g. the PR that adds it): treat everything as protected.
+          if git show "origin/$BASE_REF:.github/triage/protected-paths.txt" > "$RUNNER_TEMP/protected.txt" 2>/dev/null; then
+            grep -Ev '^[[:space:]]*(#|$)' "$RUNNER_TEMP/protected.txt" > "$RUNNER_TEMP/patterns.txt"
+            protected=$(grep -Ef "$RUNNER_TEMP/patterns.txt" "$RUNNER_TEMP/files.txt" | paste -sd, - || true)
+          else
+            protected="all files (no protected-paths.txt on $BASE_REF)"
+          fi
 
           changed=$(jq '.additions + .deletions' <<<"$pr")
           fix_rounds=$(jq '[.commits[] | select(.messageBody | contains("Triage-Fix:"))] | length' <<<"$pr")
@@ -110,6 +122,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - id: prompt
         env:
@@ -226,14 +239,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: .github/triage
+          persist-credentials: false
       - env:
           # A PAT so the merge to main triggers CI on main (GITHUB_TOKEN merges do not).
           GH_TOKEN: ${{ secrets.TRIAGE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           COMMENT: ${{ needs.triage.outputs.comment }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           printf '%s\n' "$COMMENT" > "$RUNNER_TEMP/body.md"
-          if gh pr merge "$PR" --auto --squash --delete-branch; then
+          # Only the reviewed commit may merge; any later push needs its own verdict.
+          if gh pr merge "$PR" --auto --squash --delete-branch --match-head-commit "$HEAD_SHA"; then
             bash .github/triage/comment.sh triage:auto-merge "$RUNNER_TEMP/body.md"
           else
             # shellcheck disable=SC2016
@@ -247,13 +263,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # The reviewed commit, with no credentials on disk for the agent to read.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          # The bot token makes the push trigger this workflow again, so a fresh
-          # agent re-reviews the fix (pushes made with GITHUB_TOKEN trigger nothing).
-          token: ${{ secrets.TRIAGE_BOT_TOKEN }}
+          persist-credentials: false
 
       - id: prompt
         env:
@@ -287,15 +302,22 @@ jobs:
 
       # Trust nothing the agent says about its own work: check it here.
       - id: verify
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -uo pipefail
           fail() { echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=$1" >> "$GITHUB_OUTPUT"; echo "::error::$1"; exit 0; }
           git add -A
           files=$(git diff --cached --name-only)
           [ -n "$files" ] || fail "the fix agent made no changes"
-          grep -Ev '^[[:space:]]*(#|$)' .github/triage/protected-paths.txt > "$RUNNER_TEMP/patterns.txt"
+          # The base branch's list: the agent could have edited the working-tree copy.
+          git show "origin/$BASE_REF:.github/triage/protected-paths.txt" > "$RUNNER_TEMP/protected.txt" 2>/dev/null \
+            || fail "no protected-paths.txt on $BASE_REF"
+          grep -Ev '^[[:space:]]*(#|$)' "$RUNNER_TEMP/protected.txt" > "$RUNNER_TEMP/patterns.txt"
           bad=$(grep -Ef "$RUNNER_TEMP/patterns.txt" <<<"$files" | paste -sd, -)
           [ -z "$bad" ] || fail "the fix touched protected paths: $bad"
+          # numstat shows binary files as "-", which would count as 0 lines.
+          ! git diff --cached --numstat | grep -q '^-' || fail "the fix changed a binary file"
           lines=$(git diff --cached --numstat | awk '{s+=$1+$2} END {print s+0}')
           [ "$lines" -le "$MAX_FIX_LINES" ] || fail "the fix changed $lines lines (limit $MAX_FIX_LINES)"
           docker compose run --rm test || fail "tests fail after the fix"
@@ -303,6 +325,8 @@ jobs:
 
       - if: steps.verify.outputs.ok == 'true'
         env:
+          # The bot token makes the push trigger this workflow again, so a fresh
+          # agent re-reviews the fix (pushes made with GITHUB_TOKEN trigger nothing).
           GH_TOKEN: ${{ secrets.TRIAGE_BOT_TOKEN }}
           HEAD_REF: ${{ github.head_ref }}
           FIX: ${{ steps.fix.outputs.structured_output }}
@@ -323,7 +347,12 @@ jobs:
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               commit -F "$RUNNER_TEMP/msg.txt"
           sha=$(git rev-parse --short HEAD)
-          git push origin "HEAD:$HEAD_REF"
+          # Token only for this command. A plain push is fast-forward only, so it
+          # fails if the author pushed after the reviewed commit.
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
+            push origin "HEAD:refs/heads/$HEAD_REF"
           {
             printf '%s\n\n' "$COMMENT"
             echo "### Fix commit $sha"
@@ -358,10 +387,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: .github/triage
+          persist-credentials: false
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT: ${{ needs.triage.outputs.comment }}
         run: |
           set -euo pipefail
+          gh pr merge "$PR" --disable-auto 2>/dev/null || true
           printf '%s\n' "$COMMENT" > "$RUNNER_TEMP/body.md"
           bash .github/triage/comment.sh triage:needs-human "$RUNNER_TEMP/body.md"
