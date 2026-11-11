@@ -1,0 +1,447 @@
+name: PR triage
+
+# A Claude agent reviews every PR and picks one of three outcomes:
+#   merge    - low risk: enable auto-merge (GitHub merges once required checks pass)
+#   fix      - small problems: a fix agent commits a fix; the push re-runs this
+#              workflow, so a fresh agent reviews the result (merge or escalate only)
+#   escalate - real risk: post recommended changes for a human reviewer
+# The workflow, not the model, has the last word: protected paths, PR size and
+# fix-round limits can only push a decision towards escalate.
+#
+# Setup: see .github/triage/README.md
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+concurrency:
+  group: pr-triage-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  PR: ${{ github.event.pull_request.number }}
+  GH_REPO: ${{ github.repository }}
+  MAX_AUTO_MERGE_LINES: 300
+  MAX_FIX_LINES: 80
+  MAX_FIX_ROUNDS: 2
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  gate:
+    # Same-repo, non-draft PRs only: forks get no secrets and must not drive an agent.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      mode: ${{ steps.g.outputs.mode }}
+      fix_allowed: ${{ steps.g.outputs.fix_allowed }}
+      merge_allowed: ${{ steps.g.outputs.merge_allowed }}
+      notes: ${{ steps.g.outputs.notes }}
+      agent_ready: ${{ steps.g.outputs.agent_ready }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # A new run means new commits or a fresh look: any earlier merge verdict is stale.
+      - name: Cancel earlier auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge "$PR" --disable-auto 2>/dev/null || true
+      - id: g
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HAS_BOT_TOKEN: ${{ secrets.TRIAGE_BOT_TOKEN != '' }}
+          HAS_CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          # From git, not the API: the API caps file and commit lists at 100.
+          range="origin/$BASE_REF...$HEAD_SHA"
+          git diff --name-only "$range" > "$RUNNER_TEMP/files.txt"
+
+          # Read the base branch's list so a PR cannot loosen its own rules.
+          # No list on the base branch (e.g. the PR that adds it) or no files: treat everything as protected.
+          if [ ! -s "$RUNNER_TEMP/files.txt" ]; then
+            protected="all files (could not list the PR's changed files)"
+          elif git show "origin/$BASE_REF:.github/triage/protected-paths.txt" > "$RUNNER_TEMP/protected.txt" 2>/dev/null; then
+            grep -Ev '^[[:space:]]*(#|$)' "$RUNNER_TEMP/protected.txt" > "$RUNNER_TEMP/patterns.txt"
+            protected=$(grep -Ef "$RUNNER_TEMP/patterns.txt" "$RUNNER_TEMP/files.txt" | paste -sd, - || true)
+          else
+            protected="all files (no protected-paths.txt on $BASE_REF)"
+          fi
+
+          changed=$(git diff --numstat "$range" | awk '{s+=$1+$2} END {print s+0}')
+          fix_rounds=$(git log --format=%B "origin/$BASE_REF..$HEAD_SHA" | grep -c '^Triage-Fix:' || true)
+          head_is_fix=false
+          git log -1 --format=%B "$HEAD_SHA" | grep -q '^Triage-Fix:' && head_is_fix=true
+
+          mode=initial fix_allowed=true merge_allowed=true notes=()
+          if [ "$head_is_fix" = true ]; then
+            mode=re-review fix_allowed=false
+          fi
+          if [ "$fix_rounds" -ge "$MAX_FIX_ROUNDS" ]; then
+            fix_allowed=false; notes+=("fix limit reached ($fix_rounds agent fix commits)")
+          fi
+          if [ -n "$protected" ]; then
+            fix_allowed=false merge_allowed=false; notes+=("touches protected paths: $protected")
+          fi
+          if [ "$changed" -gt "$MAX_AUTO_MERGE_LINES" ]; then
+            merge_allowed=false; notes+=("$changed changed lines exceeds auto-merge limit of $MAX_AUTO_MERGE_LINES")
+          fi
+          if [ "$HAS_BOT_TOKEN" != true ]; then
+            fix_allowed=false; notes+=("TRIAGE_BOT_TOKEN is not configured, so the agent cannot push fixes")
+          fi
+
+          {
+            echo "mode=$mode"
+            echo "fix_allowed=$fix_allowed"
+            echo "merge_allowed=$merge_allowed"
+            echo "agent_ready=$HAS_CLAUDE_TOKEN"
+            if [ ${#notes[@]} -gt 0 ]; then
+              joined=$(printf '%s; ' "${notes[@]}"); echo "notes=${joined%; }"
+            else
+              echo "notes=none"
+            fi
+          } | tee -a "$GITHUB_OUTPUT"
+
+  triage:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      decision: ${{ steps.decide.outputs.decision }}
+      result: ${{ steps.decide.outputs.result }}
+      comment: ${{ steps.decide.outputs.comment }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: prompt
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          MODE: ${{ needs.gate.outputs.mode }}
+          FIX_ALLOWED: ${{ needs.gate.outputs.fix_allowed }}
+          MERGE_ALLOWED: ${{ needs.gate.outputs.merge_allowed }}
+          GUARD_NOTES: ${{ needs.gate.outputs.notes }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = re-review ]; then
+            export MODE_NOTE="The latest commit was pushed by the fix agent. Review the whole PR again with fresh eyes, paying particular attention to that commit and whether it really fixed what it claims. You may not fix again: choose merge or escalate."
+          else
+            export MODE_NOTE="This is a fresh review of the author's changes."
+          fi
+          # The agent gets no shell (even git log/diff can write files via --output),
+          # so hand it the diff and log as files.
+          mkdir -p .triage-context
+          git diff "origin/$BASE_REF...HEAD" > .triage-context/pr.diff
+          git log --stat "origin/$BASE_REF..HEAD" > .triage-context/commits.txt
+          d=$(openssl rand -hex 16)
+          {
+            echo "text<<$d"
+            # shellcheck disable=SC2016
+            envsubst '$PR_NUMBER $BASE_REF $MODE $MODE_NOTE $FIX_ALLOWED $MERGE_ALLOWED $GUARD_NOTES $PR_TITLE $PR_BODY' \
+              < .github/triage/triage-prompt.md
+            echo "$d"
+            echo "schema=$(jq -c . .github/triage/triage-schema.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - id: triage
+        if: needs.gate.outputs.agent_ready == 'true'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: |
+            --model claude-opus-5-5
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep"
+            --json-schema '${{ steps.prompt.outputs.schema }}'
+
+      # Guardrails: the model's choice can only be made more cautious here.
+      - id: decide
+        env:
+          RESULT: ${{ steps.triage.outputs.structured_output }}
+          TRIAGE_OUTCOME: ${{ steps.triage.outcome }}
+          AGENT_READY: ${{ needs.gate.outputs.agent_ready }}
+          MODE: ${{ needs.gate.outputs.mode }}
+          FIX_ALLOWED: ${{ needs.gate.outputs.fix_allowed }}
+          MERGE_ALLOWED: ${{ needs.gate.outputs.merge_allowed }}
+          GUARD_NOTES: ${{ needs.gate.outputs.notes }}
+        run: |
+          set -euo pipefail
+          reviewed=true
+          if ! jq -e '.decision' <<<"${RESULT:-null}" >/dev/null 2>&1; then
+            reviewed=false
+            if [ "$AGENT_READY" != true ]; then
+              # shellcheck disable=SC2016
+              why='The triage agent did not run: the `CLAUDE_CODE_OAUTH_TOKEN` secret is not set. Add it (see `.github/triage/README.md`), then re-run this workflow.'
+            elif [ "$TRIAGE_OUTCOME" = failure ]; then
+              why="The triage agent failed before returning a verdict. Check the [run]($RUN_URL) for the error, then re-run this workflow."
+            else
+              why="The triage agent finished without returning a verdict. Check the [run]($RUN_URL), then re-run this workflow."
+            fi
+            RESULT=$(jq -n --arg why "$why" \
+              '{decision: "escalate", risk: "not assessed", summary: "Triage agent did not review this PR", findings: [], fix_plan: "", comment_markdown: ("Nothing was reviewed, so this PR needs a human.\n\n" + $why)}')
+          fi
+          decision=$(jq -r .decision <<<"$RESULT")
+          risk=$(jq -r .risk <<<"$RESULT")
+          override=""
+          if [ "$decision" = merge ] && [ "$risk" != low ]; then
+            override="agent chose merge at $risk risk"
+          elif [ "$decision" = merge ] && [ "$MERGE_ALLOWED" != true ]; then
+            override="auto-merge not allowed"
+          elif [ "$decision" = fix ] && [ "$risk" = high ]; then
+            override="agent chose fix at high risk"
+          elif [ "$decision" = fix ] && [ "$FIX_ALLOWED" != true ]; then
+            override="agent fixes not allowed"
+          fi
+          [ -n "$override" ] && decision=escalate
+
+          case $decision in
+            merge)    header="## ✅ Triage: low risk, auto-merging" ;;
+            fix)      header="## 🔧 Triage: small problems, agent is fixing" ;;
+            escalate) header="## 🧑‍🚀 Triage: needs human review" ;;
+          esac
+          [ "$reviewed" = true ] || header="## ⚠️ Triage: agent did not review this PR"
+          d=$(openssl rand -hex 16)
+          {
+            echo "decision=$decision"
+            echo "result=$(jq -c . <<<"$RESULT")"
+            echo "comment<<$d"
+            echo "$header"
+            echo
+            echo "**Risk:** $risk${override:+ · **Escalated by workflow:** $override}"
+            [ "$GUARD_NOTES" != none ] && echo "**Guardrails:** $GUARD_NOTES"
+            echo
+            jq -r .comment_markdown <<<"$RESULT"
+            echo
+            echo "---"
+            echo "<sub>PR triage agent · mode: $MODE · [run]($RUN_URL)</sub>"
+            echo "$d"
+          } >> "$GITHUB_OUTPUT"
+          echo "Decision: $decision (agent: $(jq -r .decision <<<"$RESULT"), risk: $risk)"
+
+  merge:
+    needs: triage
+    if: needs.triage.outputs.decision == 'merge'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/triage
+          persist-credentials: false
+      - env:
+          # A PAT so the merge to main triggers CI on main (GITHUB_TOKEN merges do not).
+          GH_TOKEN: ${{ secrets.TRIAGE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          COMMENT: ${{ needs.triage.outputs.comment }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$COMMENT" > "$RUNNER_TEMP/body.md"
+          # Only the reviewed commit may merge; any later push needs its own verdict.
+          if gh pr merge "$PR" --auto --squash --delete-branch --match-head-commit "$HEAD_SHA"; then
+            bash .github/triage/comment.sh triage:auto-merge "$RUNNER_TEMP/body.md"
+          else
+            # shellcheck disable=SC2016
+            printf '\n> ⚠️ Could not enable auto-merge (is "Allow auto-merge" on and is `main` protected with required checks?). A human needs to merge.\n' >> "$RUNNER_TEMP/body.md"
+            bash .github/triage/comment.sh triage:needs-human "$RUNNER_TEMP/body.md"
+          fi
+
+  fix:
+    needs: triage
+    if: needs.triage.outputs.decision == 'fix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      # The reviewed commit, with no credentials on disk for the agent to read.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: prompt
+        env:
+          RESULT: ${{ needs.triage.outputs.result }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Snapshot before the agent runs: later steps use these, never the agent's working tree.
+          cp .github/triage/comment.sh "$RUNNER_TEMP/comment.sh"
+          sha256sum .git/config > "$RUNNER_TEMP/gitconfig.sha256"
+
+          FIX_PLAN=$(jq -r .fix_plan <<<"$RESULT")
+          FINDINGS=$(jq -r '.findings[] | "- [\(.severity)] \(.file):\(.line // "?") — \(.issue) → \(.recommendation)"' <<<"$RESULT")
+          # shellcheck disable=SC2016
+          PROTECTED_PATHS=$(git show "origin/$BASE_REF:.github/triage/protected-paths.txt" 2>/dev/null \
+            | grep -Ev '^[[:space:]]*(#|$)' | sed 's/^/- `/; s/$/`/' || true)
+          export FIX_PLAN FINDINGS PROTECTED_PATHS
+          d=$(openssl rand -hex 16)
+          {
+            echo "text<<$d"
+            # shellcheck disable=SC2016
+            envsubst '$PR_NUMBER $FIX_PLAN $FINDINGS $MAX_FIX_LINES $PROTECTED_PATHS' < .github/triage/fix-prompt.md
+            echo "$d"
+            echo "schema=$(jq -c . .github/triage/fix-schema.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - id: fix
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: |
+            --model claude-sonnet-5-5
+            --max-turns 60
+            --allowedTools "Read,Glob,Grep,Edit,Write"
+            --json-schema '${{ steps.prompt.outputs.schema }}'
+
+      # Trust nothing the agent says about its own work: check it here.
+      - id: verify
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          FIX: ${{ steps.fix.outputs.structured_output }}
+        run: |
+          set -uo pipefail
+          fail() { echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=$1" >> "$GITHUB_OUTPUT"; echo "::error::$1"; exit 0; }
+          jq -e '(.commit_subject | length > 0) and (.commit_body | length > 0)' <<<"${FIX:-null}" >/dev/null 2>&1 \
+            || fail "the fix agent returned no commit message"
+          # Git config and hooks run code on later git commands; the agent must not touch them.
+          sha256sum --quiet -c "$RUNNER_TEMP/gitconfig.sha256" >/dev/null 2>&1 || fail "the fix agent changed .git/config"
+          [ -z "$(find .git/hooks -type f ! -name '*.sample' 2>/dev/null)" ] || fail "the fix agent added git hooks"
+          git add -A
+          files=$(git diff --cached --name-only)
+          [ -n "$files" ] || fail "the fix agent made no changes"
+          # The base branch's list: the agent could have edited the working-tree copy.
+          git show "origin/$BASE_REF:.github/triage/protected-paths.txt" > "$RUNNER_TEMP/protected.txt" 2>/dev/null \
+            || fail "no protected-paths.txt on $BASE_REF"
+          grep -Ev '^[[:space:]]*(#|$)' "$RUNNER_TEMP/protected.txt" > "$RUNNER_TEMP/patterns.txt"
+          bad=$(grep -Ef "$RUNNER_TEMP/patterns.txt" <<<"$files" | paste -sd, -)
+          [ -z "$bad" ] || fail "the fix touched protected paths: $bad"
+          # numstat shows binary files as "-", which would count as 0 lines.
+          ! git diff --cached --numstat | grep -q '^-' || fail "the fix changed a binary file"
+          lines=$(git diff --cached --numstat | awk '{s+=$1+$2} END {print s+0}')
+          [ "$lines" -le "$MAX_FIX_LINES" ] || fail "the fix changed $lines lines (limit $MAX_FIX_LINES)"
+          docker compose run --rm test || fail "tests fail after the fix"
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+
+      # No secrets in this step's environment.
+      - id: commit
+        if: steps.verify.outputs.ok == 'true'
+        env:
+          FIX: ${{ steps.fix.outputs.structured_output }}
+        run: |
+          set -euo pipefail
+          {
+            jq -r .commit_subject <<<"$FIX"
+            echo
+            jq -r .commit_body <<<"$FIX"
+            if [ "$(jq '.not_fixed | length' <<<"$FIX")" -gt 0 ]; then
+              echo; echo "Not fixed:"; jq -r '.not_fixed[] | "- \(.)"' <<<"$FIX"
+            fi
+            echo
+            echo "Triage-Fix: $RUN_URL"
+          } > "$RUNNER_TEMP/msg.txt"
+          git -c core.hooksPath=/dev/null \
+              -c user.name="pr-triage-agent" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -F "$RUNNER_TEMP/msg.txt"
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      # The only step that sees the bot token. It makes the push trigger this
+      # workflow again, so a fresh agent re-reviews the fix (GITHUB_TOKEN pushes
+      # trigger nothing). A plain push is fast-forward only, so it fails if the
+      # author pushed after the reviewed commit.
+      - if: steps.verify.outputs.ok == 'true'
+        env:
+          BOT_TOKEN: ${{ secrets.TRIAGE_BOT_TOKEN }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          auth=$(printf 'x-access-token:%s' "$BOT_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git -c core.hooksPath=/dev/null -c core.fsmonitor=false \
+              -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
+              push origin "HEAD:refs/heads/$HEAD_REF"
+
+      - if: steps.verify.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT: ${{ needs.triage.outputs.comment }}
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          set -euo pipefail
+          {
+            printf '%s\n\n' "$COMMENT"
+            echo "### Fix commit $SHA"
+            echo '```'
+            cat "$RUNNER_TEMP/msg.txt"
+            echo '```'
+            echo "A fresh triage agent will now review this commit and either auto-merge or escalate."
+          } > "$RUNNER_TEMP/body.md"
+          bash "$RUNNER_TEMP/comment.sh" triage:agent-fixed "$RUNNER_TEMP/body.md"
+
+      - if: failure() || steps.verify.outputs.ok == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT: ${{ needs.triage.outputs.comment }}
+          REASON: ${{ steps.verify.outputs.reason || 'the fix job failed' }}
+        run: |
+          {
+            printf '%s\n\n' "$COMMENT"
+            echo "> ⚠️ The agent tried to fix this but $REASON, so nothing was pushed. The findings above need a human."
+          } > "$RUNNER_TEMP/body.md"
+          if [ -f "$RUNNER_TEMP/comment.sh" ]; then
+            bash "$RUNNER_TEMP/comment.sh" triage:needs-human "$RUNNER_TEMP/body.md"
+          else
+            gh pr comment "$PR" --body-file "$RUNNER_TEMP/body.md"
+          fi
+
+  escalate:
+    needs: triage
+    if: needs.triage.outputs.decision == 'escalate'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/triage
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT: ${{ needs.triage.outputs.comment }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR" --disable-auto 2>/dev/null || true
+          printf '%s\n' "$COMMENT" > "$RUNNER_TEMP/body.md"
+          bash .github/triage/comment.sh triage:needs-human "$RUNNER_TEMP/body.md"

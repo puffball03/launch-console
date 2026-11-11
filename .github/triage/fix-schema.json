@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["commit_subject", "commit_body", "not_fixed"],
+  "properties": {
+    "commit_subject": { "type": "string" },
+    "commit_body": { "type": "string" },
+    "not_fixed": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Findings left unfixed, each with the reason."
+    }
+  }
+}
