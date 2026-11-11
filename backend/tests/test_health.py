@@ -1,11 +1,10 @@
 from fastapi.testclient import TestClient
 
-from app.config import load_settings
 from app.main import create_app
 
 
-def test_health_returns_ok():
-    client = TestClient(create_app(load_settings({})))
+def test_health_returns_ok(make_settings):
+    client = TestClient(create_app(make_settings()))
 
     response = client.get("/api/health")
 
@@ -13,13 +12,13 @@ def test_health_returns_ok():
     assert response.json()["ok"] is True
 
 
-def test_health_reports_fake_provider_without_key():
-    client = TestClient(create_app(load_settings({})))
+def test_health_reports_fake_provider_without_key(make_settings):
+    client = TestClient(create_app(make_settings()))
 
     assert client.get("/api/health").json()["provider"] == "fake"
 
 
-def test_health_reports_foundry_provider_with_key():
-    client = TestClient(create_app(load_settings({"ANTHROPIC_FOUNDRY_API_KEY": "test-key"})))
+def test_health_reports_foundry_provider_with_key(make_settings):
+    client = TestClient(create_app(make_settings(ANTHROPIC_FOUNDRY_API_KEY="test-key")))
 
     assert client.get("/api/health").json()["provider"] == "foundry"
