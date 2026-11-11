@@ -67,7 +67,29 @@ def _demo_check_injection(note: str) -> dict:
     return {"flagged": False, "reason": "No instructions found in the note."}
 
 
+# First match wins, so weather is checked before the pad and tower words of ground systems.
+DEMO_SUBSYSTEMS = [
+    ("propulsion", r"lox|fuel|valve|engine|turbopump|propellant|thrust"),
+    ("telemetry", r"telemetry|link|signal|downlink|antenna"),
+    ("avionics", r"guidance|imu|avionics|flight computer|gnc"),
+    ("weather", r"wind|weather|lightning|gust|cloud|rain"),
+    ("ground_systems", r"pad|tower|umbilical|ground|crane|gse"),
+]
+DEMO_HIGH = r"leak|fire|fail|failed|abort|lightning|explosion|overpressure"
+DEMO_MEDIUM = r"slow|intermittent|intermittently|dropped|delay|delayed|degraded"
+
+
+def _demo_sort(note: str) -> dict:
+    def has(pattern: str) -> bool:
+        return re.search(rf"\b(?:{pattern})\b", note, re.IGNORECASE) is not None
+
+    subsystem = next((name for name, words in DEMO_SUBSYSTEMS if has(words)), "other")
+    severity = "high" if has(DEMO_HIGH) else "medium" if has(DEMO_MEDIUM) else "low"
+    return {"subsystem": subsystem, "severity": severity}
+
+
 DEMO_RULES: dict[str, Callable[[str], dict]] = {
+    "sort": _demo_sort,
     "check_injection": _demo_check_injection,
 }
 
