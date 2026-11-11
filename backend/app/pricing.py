@@ -1,12 +1,14 @@
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
-
-from app.config import Settings
 
 PER_MILLION = Decimal(1_000_000)
 FAST_MODEL = "claude-haiku-5-5"
 SMART_MODEL = "claude-sonnet-5-5"
+
+# Each pipeline step runs in one role. Cost comes from the role, not the Foundry
+# deployment name, so one deployment may serve both roles without ambiguity.
+MODEL_FOR_ROLE = {"fast": FAST_MODEL, "smart": SMART_MODEL}
 
 
 class UnknownModelError(KeyError):
@@ -46,28 +48,14 @@ PRICES: dict[str, Price] = {
 }
 
 
-def aliases_from_settings(settings: Settings) -> dict[str, str]:
-    """Foundry deployment names map back to the model they serve."""
-    if settings.model_fast == settings.model_smart:
-        raise ValueError("MODEL_FAST and MODEL_SMART must name different deployments")
-    return {settings.model_fast: FAST_MODEL, settings.model_smart: SMART_MODEL}
-
-
-def cost_usd(
-    model: str,
-    *,
-    input_tokens: int,
-    output_tokens: int,
-    aliases: Mapping[str, str] | None = None,
-) -> Decimal:
+def cost_usd(model: str, *, input_tokens: int, output_tokens: int) -> Decimal:
     """Cost of one model call in USD, computed exactly with Decimal."""
     if input_tokens < 0 or output_tokens < 0:
         raise ValueError("Token counts cannot be negative")
 
-    resolved = (aliases or {}).get(model, model)
-    if resolved not in PRICES:
+    if model not in PRICES:
         raise UnknownModelError(f"No price for model {model!r}")
-    price = PRICES[resolved]
+    price = PRICES[model]
 
     in_rate, out_rate = price.input, price.output
     if price.long_prompt_over is not None and input_tokens > price.long_prompt_over:
@@ -75,11 +63,19 @@ def cost_usd(
     return (input_tokens * in_rate + output_tokens * out_rate) / PER_MILLION
 
 
+def cost_for_role(role: str, *, input_tokens: int, output_tokens: int) -> Decimal:
+    """Cost of one call made in the fast or smart role."""
+    if role not in MODEL_FOR_ROLE:
+        raise ValueError(f"Unknown model role {role!r}; expected one of {sorted(MODEL_FOR_ROLE)}")
+    return cost_usd(MODEL_FOR_ROLE[role], input_tokens=input_tokens, output_tokens=output_tokens)
+
+
 def total_cost(step_costs: Iterable[Decimal | str]) -> Decimal:
-    """A report's cost is the sum of its steps. Floats are refused so rounding can't creep in."""
+    """A report's cost is the sum of its steps. Only Decimal or decimal text is accepted,
+    so floats can't add rounding error and bools or ints can't sneak in as dollars."""
     total = Decimal(0)
     for cost in step_costs:
-        if isinstance(cost, float):
-            raise TypeError("Step costs must be Decimal or decimal strings, not float")
+        if not isinstance(cost, (Decimal, str)):
+            raise TypeError(f"Step costs must be Decimal or decimal strings, got {type(cost).__name__}")
         total += Decimal(cost)
     return total

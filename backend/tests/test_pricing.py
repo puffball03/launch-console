@@ -45,22 +45,6 @@ def test_negative_token_counts_are_rejected(inp, out):
         cost_usd("claude-haiku-5-5", input_tokens=inp, output_tokens=out)
 
 
-def test_foundry_deployment_names_resolve_to_their_model():
-    aliases = {"mc-fast": "claude-haiku-5-5", "mc-smart": "claude-sonnet-5-5"}
-
-    assert cost_usd("mc-fast", input_tokens=1000, output_tokens=500, aliases=aliases) == Decimal("0.00035")
-    assert cost_usd("mc-smart", input_tokens=1000, output_tokens=500, aliases=aliases) == Decimal("0.007")
-
-
-def test_aliases_from_settings_cover_both_deployments(make_settings):
-    from app.pricing import aliases_from_settings
-
-    settings = make_settings(MODEL_FAST="mc-fast", MODEL_SMART="mc-smart")
-
-    assert aliases_from_settings(settings) == {
-        "mc-fast": "claude-haiku-5-5",
-        "mc-smart": "claude-sonnet-5-5",
-    }
 
 
 def test_haiku_prompt_of_exactly_100k_tokens_uses_the_base_rate():
@@ -100,22 +84,6 @@ def test_sonnet_has_no_long_prompt_rate():
     assert cost_usd("claude-sonnet-5-5", input_tokens=200_000, output_tokens=0) == Decimal("0.4")
 
 
-def test_same_deployment_name_for_both_models_is_rejected():
-    from app.config import Settings
-    from app.pricing import aliases_from_settings
-
-    settings = Settings(
-        llm_provider="fake",
-        foundry_api_key="",
-        foundry_resource="",
-        model_fast="mc-shared",
-        model_smart="mc-shared",
-        db_path="unused.db",
-    )
-
-    with pytest.raises(ValueError, match="MODEL_FAST and MODEL_SMART"):
-        aliases_from_settings(settings)
-
 
 @pytest.mark.parametrize(
     "partial",
@@ -130,3 +98,35 @@ def test_long_prompt_fields_must_be_set_together(partial):
 
     with pytest.raises(ValueError, match="long-prompt"):
         Price(input=Decimal("0.1"), output=Decimal("0.5"), **partial)
+
+
+
+@pytest.mark.parametrize(
+    ("role", "expected"),
+    [("fast", Decimal("0.00035")), ("smart", Decimal("0.007"))],
+)
+def test_cost_is_looked_up_by_the_steps_role(role, expected):
+    from app.pricing import cost_for_role
+
+    assert cost_for_role(role, input_tokens=1000, output_tokens=500) == expected
+
+
+def test_roles_map_to_haiku_and_sonnet():
+    from app.pricing import MODEL_FOR_ROLE
+
+    assert MODEL_FOR_ROLE == {"fast": "claude-haiku-5-5", "smart": "claude-sonnet-5-5"}
+
+
+def test_unknown_role_is_an_error():
+    from app.pricing import cost_for_role
+
+    with pytest.raises(ValueError, match="medium"):
+        cost_for_role("medium", input_tokens=1, output_tokens=1)
+
+
+@pytest.mark.parametrize("bad", [True, 1, None])
+def test_total_accepts_only_decimals_or_decimal_text(bad):
+    from app.pricing import total_cost
+
+    with pytest.raises(TypeError):
+        total_cost(["0.001", bad])
