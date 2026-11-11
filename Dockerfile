@@ -22,7 +22,7 @@ COPY backend/app ./app
 COPY --from=frontend /app/frontend/dist ./static
 ENV DB_PATH=/data/mission.db
 EXPOSE 8000
-CMD [".venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD [".venv/bin/uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
 
 # --- Test: everything installed at build time so the run needs no network ---
 FROM backend-base AS test
