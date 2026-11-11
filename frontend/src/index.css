@@ -15,3 +15,83 @@ body {
   margin: 0;
   padding: 16px;
 }
+
+.console {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin-top: -8px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid #1f2a36;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.report-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 16px;
+}
+
+.report-form .field:last-of-type,
+.report-form .form-error,
+.report-form button {
+  grid-column: 1 / -1;
+}
+
+.field label {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid #2a3846;
+  border-radius: 4px;
+  padding: 8px;
+  font: inherit;
+}
+
+.field [aria-invalid="true"] {
+  border-color: var(--no-go);
+}
+
+.field-error,
+.form-error {
+  color: var(--no-go);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.report-form button {
+  justify-self: start;
+  background: var(--go);
+  color: #04130a;
+  border: 0;
+  border-radius: 4px;
+  padding: 10px 18px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.report-form button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
