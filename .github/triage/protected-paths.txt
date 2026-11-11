@@ -1,0 +1,29 @@
+# Paths the triage agent may never auto-merge or auto-fix.
+# One extended regex per line, matched against each changed file path.
+# A PR touching any of these always goes to a human.
+
+# CI, the triage workflow itself, and its prompts
+^\.github/
+
+# Build and runtime environment
+^Dockerfile$
+^docker-compose\.yml$
+^\.dockerignore$
+^scripts/
+
+# Dependencies
+(^|/)pyproject\.toml$
+(^|/)uv\.lock$
+(^|/)package(-lock)?\.json$
+
+# Secrets and provider config
+^\.env
+^backend/app/config\.py$
+
+# Safety-critical: launch limits are the go/no-go call
+^backend/app/rules/
+
+# Model client and the no-network test guard
+^backend/app/llm/
+^backend/tests/test_network_blocked\.py$
+(^|/)conftest\.py$

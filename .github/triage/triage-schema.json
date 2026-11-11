@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision", "risk", "summary", "findings", "fix_plan", "comment_markdown"],
+  "properties": {
+    "decision": { "type": "string", "enum": ["merge", "fix", "escalate"] },
+    "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+    "summary": { "type": "string", "description": "One sentence: what the PR does and the verdict." },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "file", "issue", "recommendation", "agent_fixable"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["blocker", "major", "minor", "nit"] },
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "issue": { "type": "string" },
+          "recommendation": { "type": "string" },
+          "agent_fixable": { "type": "boolean" }
+        }
+      }
+    },
+    "fix_plan": { "type": "string", "description": "Instructions for the fix agent. Empty unless decision is fix." },
+    "comment_markdown": { "type": "string" }
+  }
+}
