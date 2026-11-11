@@ -1,0 +1,17 @@
+:root {
+  --bg: #0b0f14;
+  --panel: #121922;
+  --text: #d7e1ec;
+  --muted: #7d8b99;
+  --go: #2ecc71;
+  --no-go: #ff4d4f;
+  --warn: #f5a623;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+}

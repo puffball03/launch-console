@@ -1,0 +1,22 @@
+services:
+  app:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - mission-data:/data
+
+  test:
+    build:
+      context: .
+      target: test
+    network_mode: none
+    profiles: ["test"]
+
+volumes:
+  mission-data:
