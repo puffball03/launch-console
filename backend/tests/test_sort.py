@@ -106,6 +106,11 @@ async def test_note_reaches_the_model_wrapped_as_untrusted_data():
         ("Lightning cell 12 nm from the pad.", "weather", "high"),
         ("Tower umbilical arm is slow to retract.", "ground_systems", "medium"),
         ("Coffee machine on level 2 is out.", "other", "low"),
+        ("Engine failure on pad.", "propulsion", "high"),
+        ("Fuel line leaking near the turbopump.", "propulsion", "high"),
+        ("Two small fires reported by the GSE crew.", "ground_systems", "high"),
+        ("Pad crane test aborted after alarm.", "ground_systems", "high"),
+        ("Downlink delays seen on the backup antenna.", "telemetry", "medium"),
     ],
 )
 async def test_demo_mode_sorts_by_keywords(note, subsystem, severity):

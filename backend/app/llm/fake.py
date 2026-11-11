@@ -75,13 +75,14 @@ DEMO_SUBSYSTEMS = [
     ("weather", r"wind|weather|lightning|gust|cloud|rain"),
     ("ground_systems", r"pad|tower|umbilical|ground|crane|gse"),
 ]
-DEMO_HIGH = r"leak|fire|fail|failed|abort|lightning|explosion|overpressure"
-DEMO_MEDIUM = r"slow|intermittent|intermittently|dropped|delay|delayed|degraded"
+DEMO_HIGH = r"leak|fire|fail|abort|lightning|explo|overpressure"
+DEMO_MEDIUM = r"slow|intermittent|drop|delay|degrad"
 
 
 def _demo_sort(note: str) -> dict:
     def has(pattern: str) -> bool:
-        return re.search(rf"\b(?:{pattern})\b", note, re.IGNORECASE) is not None
+        # Keywords match the start of a word, so "leak" also catches leaks, leaking and leaked.
+        return re.search(rf"\b(?:{pattern})\w*", note, re.IGNORECASE) is not None
 
     subsystem = next((name for name, words in DEMO_SUBSYSTEMS if has(words)), "other")
     severity = "high" if has(DEMO_HIGH) else "medium" if has(DEMO_MEDIUM) else "low"
