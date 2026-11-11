@@ -6,4 +6,5 @@ frontend/dist
 backend/static
 .git
 .env
+.env.triage
 *.pdf

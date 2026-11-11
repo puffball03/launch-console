@@ -27,7 +27,9 @@ Each outcome sets one label: `triage:auto-merge`, `triage:agent-fixed` or `triag
 
 1. **Secrets** (Settings → Secrets and variables → Actions):
    - `CLAUDE_CODE_OAUTH_TOKEN`: runs the agent on your Claude Pro/Max subscription. Create it with `claude setup-token`. Runs share your plan's usage limits with your own Claude Code sessions; if a limit is hit mid-run, the PR is escalated. To bill API credits instead, swap `claude_code_oauth_token` for `anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}` in both Claude steps of the workflow.
-   - `TRIAGE_BOT_TOKEN`: a fine-grained PAT for this repo with *Contents: read and write* and *Pull requests: read and write*. Fix pushes and merges made with it trigger workflows, which is what makes the fresh re-review and CI on the fix commit happen. Without it, the agent still merges and escalates, but never fixes.
+   - `TRIAGE_BOT_TOKEN`: a fine-grained PAT for this repo with *Contents*, *Pull requests* and *Issues* set to read and write. Fix pushes and merges made with it trigger workflows, which is what makes the fresh re-review and CI on the fix commit happen. Without it, the agent still merges and escalates, but never fixes.
+
+   To keep them in a local file: `cp .env.triage.example .env.triage`, fill it in, then `gh secret set -f .env.triage --repo puffball03/launch-console`. `.env.triage` is git- and Docker-ignored; keep it out of `.env`, which docker-compose loads into the app container.
 2. **Settings → General → Allow auto-merge**: on.
 3. **Branch protection on `main`**: require the `CI / test` status check. Auto-merge waits for it, so the agent can never merge a red PR.
 
