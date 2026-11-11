@@ -14,7 +14,7 @@ The model proposes; the workflow decides. It can only make a decision more cauti
 | Guardrail | Effect |
 |---|---|
 | PR touches a path in `protected-paths.txt` (read from `main`; missing there = everything protected) | always escalate |
-| More than 300 changed lines | no auto-merge |
+| More than 700 changed lines | no auto-merge |
 | Agent says `merge` at medium/high risk, or `fix` at high risk | escalate |
 | Merge verdict | auto-merge pinned to the reviewed commit; every new run or escalation cancels it |
 | Head commit is an agent fix (`Triage-Fix:` trailer) | re-review mode, no further fixes |
