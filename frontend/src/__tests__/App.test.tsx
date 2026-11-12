@@ -245,3 +245,28 @@ test("if someone else decided first, the refusal reloads the report", async () =
   expect(await screen.findByText(/Approved by Lee/)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
 });
+
+
+test("one failed refresh doesn't stop polling while a report is processing", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server: Server = {
+    provider: "fake",
+    reports: [summary({ status: "processing", verdict: null, brief_by_at: null, briefing_status: null })],
+    details: {},
+  };
+  const fetchMock = serve(server);
+  const base = fetchMock.getMockImplementation()!;
+  let listCount = 0;
+  fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+    if (url === "/api/reports" && !init?.method && ++listCount === 2) return Promise.reject(new TypeError("blip"));
+    return base(url, init);
+  });
+  render(<App />);
+  await waitFor(() => expect(listCalls(fetchMock)).toBe(1));
+
+  await act(() => vi.advanceTimersByTimeAsync(2000)); // this refresh fails
+  expect(listCalls(fetchMock)).toBe(2);
+
+  await act(() => vi.advanceTimersByTimeAsync(2000)); // and polling carries on
+  expect(listCalls(fetchMock)).toBe(3);
+});

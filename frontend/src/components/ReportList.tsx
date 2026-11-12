@@ -13,12 +13,16 @@ function rank(r: ReportSummary): number {
   return 2;
 }
 
+function deadline(r: ReportSummary): number {
+  return r.brief_by_at ? Date.parse(r.brief_by_at) : Number.POSITIVE_INFINITY;
+}
+
 /** Processing first, then pending briefings by soonest deadline, then decided or failed, newest first. */
 export function sortReports(reports: ReportSummary[]): ReportSummary[] {
   return [...reports].sort((a, b) => {
     const byRank = rank(a) - rank(b);
     if (byRank !== 0) return byRank;
-    if (rank(a) === 1) return Date.parse(a.brief_by_at ?? "") - Date.parse(b.brief_by_at ?? "");
+    if (rank(a) === 1) return deadline(a) - deadline(b) || 0; // two missing deadlines: Infinity - Infinity is NaN
     return Date.parse(b.created_at) - Date.parse(a.created_at);
   });
 }

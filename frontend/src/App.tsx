@@ -46,13 +46,14 @@ export default function App() {
     refresh();
   }, [refresh]);
 
-  // Poll only while something is still being processed.
+  // Poll only while something is still being processed. An interval keeps going after a
+  // failed refresh, which sets no state and so would never re-arm a one-shot timer.
   const processing = reports.some((r) => r.status === "processing") || detail?.status === "processing";
   useEffect(() => {
     if (!processing) return;
-    const timer = setTimeout(refresh, POLL_MS);
-    return () => clearTimeout(timer);
-  }, [processing, refresh, reports, detail]);
+    const timer = setInterval(refresh, POLL_MS);
+    return () => clearInterval(timer);
+  }, [processing, refresh]);
 
   // A one-second clock drives the countdowns.
   useEffect(() => {

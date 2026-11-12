@@ -107,3 +107,14 @@ test("an empty list says there are no reports", () => {
 
   expect(screen.getByText(/no reports yet/i)).toBeInTheDocument();
 });
+
+
+test("a pending report without a deadline sorts after those with one", () => {
+  const reports = [
+    report({ id: 1, brief_by_at: null }),
+    report({ id: 2, brief_by_at: "2026-11-12T09:15:00Z" }),
+    report({ id: 3, brief_by_at: "2026-11-12T09:05:00Z" }),
+  ];
+
+  expect(sortReports(reports).map((r) => r.id)).toEqual([3, 2, 1]);
+});

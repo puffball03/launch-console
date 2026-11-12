@@ -174,7 +174,7 @@ class LLMResult:
 
 ### Console UI
 - **Left:** report form.
-- **Centre:** report list with GO/NO-GO chip, severity, subsystem, countdown and flag icon.
+- **Centre:** report list with GO/NO-GO chip, severity, subsystem, countdown and flag icon. Order: reports still processing first (just filed, no deadline yet), then pending briefings by soonest deadline, then decided or failed reports, newest first.
 - **Right:** detail panel with:
   - the report
   - the briefing (code-inserted verdict, violations, deadline; flagged banner; "reviewer not satisfied" tag)
