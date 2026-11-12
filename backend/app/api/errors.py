@@ -2,7 +2,7 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.schemas import NAME_MAX_CHARS, NOTE_MAX_CHARS, STATIONS
+from app.schemas import NAME_MAX_CHARS, NOTE_MAX_CHARS, REASON_MAX_CHARS, STATIONS
 
 LABELS = {
     "engineer_name": "Name",
@@ -11,9 +11,16 @@ LABELS = {
     "temp_c": "Temperature",
     "fuel_pct": "Fuel",
     "note": "Note",
+    "approver_name": "Approver name",
+    "reason": "Reason",
 }
 
-MAX_CHARS = {"engineer_name": NAME_MAX_CHARS, "note": NOTE_MAX_CHARS}
+MAX_CHARS = {
+    "engineer_name": NAME_MAX_CHARS,
+    "note": NOTE_MAX_CHARS,
+    "approver_name": NAME_MAX_CHARS,
+    "reason": REASON_MAX_CHARS,
+}
 
 
 def _message(field: str, error_type: str, fallback: str) -> str:

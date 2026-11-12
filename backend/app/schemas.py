@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, StringConstraints
 
 STATIONS = ("PROP", "GNC", "TELEM", "RANGE", "WX")
 NAME_MAX_CHARS = 100
+REASON_MAX_CHARS = 500
 NOTE_MAX_CHARS = 2000
 
 Station = Literal["PROP", "GNC", "TELEM", "RANGE", "WX"]
@@ -21,3 +22,15 @@ class ReportIn(BaseModel):
     note: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=NOTE_MAX_CHARS)
     ]
+
+
+ApproverName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=NAME_MAX_CHARS)]
+
+
+class ApproveIn(BaseModel):
+    approver_name: ApproverName
+
+
+class RejectIn(BaseModel):
+    approver_name: ApproverName
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, max_length=REASON_MAX_CHARS)] | None = None

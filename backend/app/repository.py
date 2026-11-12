@@ -184,3 +184,27 @@ class ReportRepository:
         briefing.update(json.loads(briefing.pop("content_json")))
         briefing["reviewer_satisfied"] = bool(briefing["reviewer_satisfied"])
         return briefing
+
+    def get_briefing_by_id(self, briefing_id: int) -> dict | None:
+        with connect(self.db_path) as conn:
+            row = conn.execute("SELECT report_id FROM briefings WHERE id = ?", (briefing_id,)).fetchone()
+        return self.get_briefing(row["report_id"]) if row else None
+
+    def decide_briefing(
+        self, briefing_id: int, *, status: str, decided_by: str, decided_at: datetime, reason: str | None = None
+    ) -> bool:
+        """The only way a briefing leaves pending. One conditional UPDATE, so two people
+        clicking at once can't both decide it. Returns False unless the briefing was pending
+        and its report is ready (a briefing on a failed report is never approvable)."""
+        if status not in ("approved", "rejected"):
+            raise ValueError(f"Unknown decision {status!r}")
+        with connect(self.db_path) as conn:
+            changed = conn.execute(
+                """
+                UPDATE briefings SET status = ?, decided_by = ?, decided_at = ?, reject_reason = ?
+                WHERE id = ? AND status = 'pending'
+                  AND report_id IN (SELECT id FROM reports WHERE status = 'ready')
+                """,
+                (status, decided_by, decided_at.isoformat(), reason, briefing_id),
+            ).rowcount
+        return changed == 1
