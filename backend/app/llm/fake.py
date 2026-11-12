@@ -89,9 +89,25 @@ def _demo_sort(note: str) -> dict:
     return {"subsystem": subsystem, "severity": severity}
 
 
+def _demo_check_missing(note: str) -> dict:
+    words = re.findall(r"[A-Za-z0-9-]+", note)
+    if len(words) < 8 or not re.search(r"\d", note):
+        return {"flagged": True, "reason": "Add the component, a reading or time, and how far from normal."}
+    return {"flagged": False, "reason": "The note gives a component, a time and a reading."}
+
+
+def _demo_check_panic(note: str) -> dict:
+    shouting = len(re.findall(r"\b[A-Z]{4,}\b", note)) >= 2
+    if shouting or "!!" in note or re.search(r"\b(?:panic|disaster|catastroph)\w*", note, re.IGNORECASE):
+        return {"flagged": True, "reason": "The tone is alarmist; lead with the facts."}
+    return {"flagged": False, "reason": "The tone is factual."}
+
+
 DEMO_RULES: dict[str, Callable[[str], dict]] = {
     "sort": _demo_sort,
     "check_injection": _demo_check_injection,
+    "check_missing": _demo_check_missing,
+    "check_panic": _demo_check_panic,
 }
 
 
