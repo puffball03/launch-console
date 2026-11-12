@@ -25,11 +25,14 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ValueError(f"LLM_PROVIDER must be one of {PROVIDERS}, got {provider!r}")
     if provider == "foundry" and not api_key:
         raise ValueError("LLM_PROVIDER=foundry requires ANTHROPIC_FOUNDRY_API_KEY")
+    resource = env.get("ANTHROPIC_FOUNDRY_RESOURCE", "").strip()
+    if provider == "foundry" and not resource:
+        raise ValueError("LLM_PROVIDER=foundry requires ANTHROPIC_FOUNDRY_RESOURCE (the Foundry resource name)")
 
     return Settings(
         llm_provider=provider,
         foundry_api_key=api_key,
-        foundry_resource=env.get("ANTHROPIC_FOUNDRY_RESOURCE", "").strip(),
+        foundry_resource=resource,
         model_fast=env.get("MODEL_FAST", "").strip() or "claude-haiku-5-5",
         model_smart=env.get("MODEL_SMART", "").strip() or "claude-sonnet-5-5",
         db_path=env.get("DB_PATH", "").strip() or "/data/mission.db",

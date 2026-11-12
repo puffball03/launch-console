@@ -69,8 +69,17 @@ def test_unprocessed_report_has_no_briefing_and_an_empty_trace(make_settings):
     assert (detail["briefing"], detail["trace"], detail["total_cost_usd"]) == (None, [], "0")
 
 
-def test_foundry_without_its_client_yet_fails_clearly_not_with_a_crash(make_settings):
-    c = client(make_settings, ANTHROPIC_FOUNDRY_API_KEY="test-key")
+def test_with_a_key_the_app_uses_the_foundry_client(make_settings):
+    from app.llm.foundry import FoundryClient
+
+    app = create_app(make_settings(ANTHROPIC_FOUNDRY_API_KEY="test-key", ANTHROPIC_FOUNDRY_RESOURCE="mc-test"))
+
+    assert isinstance(app.state.llm, FoundryClient)
+
+
+def test_foundry_unreachable_fails_cleanly_not_with_a_crash(make_settings):
+    # Tests block the network, so every Foundry call fails with a connection error.
+    c = client(make_settings, ANTHROPIC_FOUNDRY_API_KEY="test-key", ANTHROPIC_FOUNDRY_RESOURCE="mc-test")
 
     report_id = c.post("/api/reports", json=REPORT).json()["id"]
     detail = c.get(f"/api/reports/{report_id}").json()
@@ -79,4 +88,4 @@ def test_foundry_without_its_client_yet_fails_clearly_not_with_a_crash(make_sett
     assert detail["verdict"] == "go"
     sort = next(t for t in detail["trace"] if t["step"] == "sort")
     assert sort["status"] == "error"
-    assert "NAT-31" in sort["error"]
+    assert "Connection" in sort["error"]

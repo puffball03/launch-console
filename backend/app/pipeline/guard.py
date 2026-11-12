@@ -33,12 +33,14 @@ class GuardedLLM:
         retries: int = 1,
         backoff: float = 0.5,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        retryable: Callable[[BaseException], bool] = lambda exc: True,
     ):
         self.inner = inner
         self.timeout = timeout
         self.retries = retries
         self.backoff = backoff
         self.sleep = sleep
+        self.retryable = retryable
         self.calls: dict[str, StepCall] = {}
 
     async def complete(
@@ -63,7 +65,7 @@ class GuardedLLM:
                     )
                 except Exception as exc:  # noqa: BLE001 - retried, then re-raised for the step to handle
                     call.error = f"{type(exc).__name__}: {exc}"
-                    if attempt == self.retries:
+                    if attempt == self.retries or not self.retryable(exc):
                         raise
                     await self.sleep(self.backoff * 2**attempt)
                     continue
