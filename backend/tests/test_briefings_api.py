@@ -192,3 +192,12 @@ def test_the_report_list_carries_each_briefings_status(client):
 
     assert by_id[decided["id"]]["briefing_status"] == "approved"
     assert by_id[open_report["id"]]["briefing_status"] == "pending"
+
+
+def test_the_report_detail_carries_its_briefing_status(client):
+    report = file(client)
+    assert report["briefing_status"] == "pending"
+
+    approve(client, report["briefing"]["id"])
+
+    assert client.get(f"/api/reports/{report['id']}").json()["briefing_status"] == "approved"

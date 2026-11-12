@@ -146,3 +146,11 @@ test("no decision controls while the report is not ready", () => {
 
   expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
 });
+
+
+test("the reason box is labelled as applying to a rejection only", () => {
+  render(<BriefingPanel briefing={briefing()} reportReady onDecided={() => {}} />);
+
+  expect(screen.getByLabelText("Reason for rejection (optional)")).toBeInTheDocument();
+  expect(screen.getByText(/approving ignores this box/i)).toBeInTheDocument();
+});

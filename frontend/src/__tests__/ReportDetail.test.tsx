@@ -24,7 +24,7 @@ function detail(over: Partial<Detail> = {}): Detail {
       { step: "check_missing", flagged: false, reason: "Complete.", status: "ok" },
       { step: "check_panic", flagged: false, reason: "Factual.", status: "ok" },
     ],
-    prescreen_hits: [], briefing: BRIEFING, total_cost_usd: "0.002",
+    prescreen_hits: [], briefing: BRIEFING, trace: [], total_cost_usd: "0.002",
     ...over,
   };
 }
@@ -152,4 +152,18 @@ test("the countdown is hidden once the briefing is decided", () => {
   });
 
   expect(screen.getByText(/brief by/i)).not.toHaveTextContent("left");
+});
+
+
+test("the report detail includes its trace and total cost", () => {
+  show({
+    total_cost_usd: "0.0019939",
+    trace: [
+      { seq: 1, step: "limits", kind: "code", model: null, status: "ok", input_tokens: 0, output_tokens: 0,
+        cost_usd: "0", duration_ms: 0, input_preview: null, output_preview: null, error: null },
+    ],
+  });
+
+  expect(screen.getByRole("heading", { name: /trace/i })).toHaveTextContent("$0.0019939");
+  expect(screen.getByRole("heading", { name: "limits" })).toBeInTheDocument();
 });

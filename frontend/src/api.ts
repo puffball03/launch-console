@@ -101,6 +101,21 @@ export async function decideBriefing(
 
 export type CheckSummary = { step: string; flagged: boolean; reason: string; status: string };
 
+export type TraceStep = {
+  seq: number;
+  step: string;
+  kind: "model" | "code";
+  model: string | null;
+  status: "ok" | "fallback" | "error";
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: string;
+  duration_ms: number;
+  input_preview: string | null;
+  output_preview: string | null;
+  error: string | null;
+};
+
 export type ReportDetail = ReportSummary & {
   note: string;
   wind_knots: number;
@@ -111,6 +126,7 @@ export type ReportDetail = ReportSummary & {
   prescreen_hits: string[];
   brief_by_minutes: number | null;
   briefing: Briefing | null;
+  trace: TraceStep[];
   total_cost_usd: string;
 };
 

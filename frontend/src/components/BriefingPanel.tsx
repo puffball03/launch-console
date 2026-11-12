@@ -76,8 +76,16 @@ export default function BriefingPanel({ briefing, reportReady, onDecided, onStal
           <div className="decide">
             <label htmlFor="approver">Approver name</label>
             <input id="approver" value={approver} onChange={(e) => setApprover(e.target.value)} />
-            <label htmlFor="reason">Reason (for a rejection, optional)</label>
-            <input id="reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+            <label htmlFor="reason">Reason for rejection (optional)</label>
+            <input
+              id="reason"
+              aria-describedby="reason-hint"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+            <p id="reason-hint" className="muted hint">
+              Sent only with Reject; approving ignores this box.
+            </p>
             {error && (
               <p role="alert" className="form-error">
                 {error}
