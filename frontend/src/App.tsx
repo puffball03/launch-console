@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   type Briefing,
@@ -20,11 +20,17 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [now, setNow] = useState(() => new Date());
+  // The latest selection, so a slow response for an earlier one can't replace it.
+  const selectedRef = useRef<number | null>(null);
+  selectedRef.current = selectedId;
 
   const refresh = useCallback(async () => {
     try {
       setReports(await listReports());
-      if (selectedId !== null) setDetail(await getReport(selectedId));
+      if (selectedId !== null) {
+        const fetched = await getReport(selectedId);
+        if (fetched.id === selectedRef.current) setDetail(fetched);
+      }
     } catch {
       // Keep what is on screen; the next poll or action tries again.
     }
@@ -86,7 +92,7 @@ export default function App() {
         </section>
         <section className="panel" aria-live="polite" aria-label="Selected report">
           {detail && detail.id === selectedId ? (
-            <ReportDetail report={detail} now={now} onDecided={onDecided} />
+            <ReportDetail report={detail} now={now} onDecided={onDecided} onStale={refresh} />
           ) : (
             <p className="muted">Select a report to see its briefing.</p>
           )}

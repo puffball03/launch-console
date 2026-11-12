@@ -6,6 +6,8 @@ type Props = {
   briefing: Briefing;
   reportReady: boolean;
   onDecided: (briefing: Briefing) => void;
+  /** Called when the server refused because the briefing changed elsewhere (409). */
+  onStale?: () => void;
 };
 
 function Decision({ briefing }: { briefing: Briefing }) {
@@ -19,7 +21,7 @@ function Decision({ briefing }: { briefing: Briefing }) {
   );
 }
 
-export default function BriefingPanel({ briefing, reportReady, onDecided }: Props) {
+export default function BriefingPanel({ briefing, reportReady, onDecided, onStale }: Props) {
   const [approver, setApprover] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -31,8 +33,12 @@ export default function BriefingPanel({ briefing, reportReady, onDecided }: Prop
     setError(null);
     const result = await decideBriefing(briefing.id, action, approver.trim(), action === "reject" ? reason.trim() : undefined);
     setSending(false);
-    if (result.ok) onDecided(result.briefing);
-    else setError(result.message);
+    if (result.ok) {
+      onDecided(result.briefing);
+      return;
+    }
+    setError(result.message);
+    if (result.conflict) onStale?.();
   }
 
   return (
@@ -56,8 +62,8 @@ export default function BriefingPanel({ briefing, reportReady, onDecided }: Prop
         <>
           <h4>Open questions</h4>
           <ul>
-            {briefing.open_questions.map((q) => (
-              <li key={q}>{q}</li>
+            {briefing.open_questions.map((q, i) => (
+              <li key={`${i}-${q}`}>{q}</li>
             ))}
           </ul>
         </>

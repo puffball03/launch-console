@@ -188,3 +188,60 @@ test("a decision that lands after switching reports doesn't change the other rep
   expect(screen.queryByText(/Approved by Kim/)).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
 });
+
+
+test("a slow response for the previous selection doesn't replace the current one", async () => {
+  const user = userEvent.setup();
+  const server: Server = {
+    provider: "fake",
+    reports: [summary({ id: 4 }), summary({ id: 5, station: "PROP" })],
+    details: {
+      4: detail({ id: 4 }),
+      5: detail({ id: 5, station: "PROP", briefing: { ...BRIEFING, id: 12, headline: "GO: all nominal" } }),
+    },
+  };
+  const fetchMock = serve(server);
+  let releaseFour: () => void = () => {};
+  const base = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+    url === "/api/reports/4"
+      ? new Promise<Response>((resolve) => (releaseFour = () => resolve(base(url, init) as unknown as Response)))
+      : base(url, init),
+  );
+  render(<App />);
+
+  await user.click(await screen.findByRole("button", { name: /#4 WX/ }));
+  await user.click(screen.getByRole("button", { name: /#5 PROP/ }));
+  expect(await screen.findByRole("heading", { name: "GO: all nominal" })).toBeInTheDocument();
+
+  await act(async () => releaseFour());
+
+  expect(screen.getByRole("heading", { name: "GO: all nominal" })).toBeInTheDocument();
+  expect(screen.queryByText(/select a report/i)).not.toBeInTheDocument();
+});
+
+
+test("if someone else decided first, the refusal reloads the report", async () => {
+  const user = userEvent.setup();
+  const server: Server = { provider: "fake", reports: [summary()], details: { 4: detail() } };
+  const fetchMock = serve(server);
+  const base = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+    url.endsWith("/approve")
+      ? Promise.resolve(new Response(JSON.stringify({ detail: "Already approved by Lee." }), { status: 409 }))
+      : base(url, init),
+  );
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: /#4 WX/ }));
+  await user.type(await screen.findByLabelText(/approver name/i), "Kim");
+
+  // Lee approved it from another console meanwhile.
+  server.details[4] = detail({
+    briefing_status: "approved",
+    briefing: { ...BRIEFING, status: "approved", decided_by: "Lee", decided_at: "2030-01-01T00:01:00Z" },
+  });
+  await user.click(screen.getByRole("button", { name: "Approve" }));
+
+  expect(await screen.findByText(/Approved by Lee/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+});

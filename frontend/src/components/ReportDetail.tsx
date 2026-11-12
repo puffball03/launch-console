@@ -6,6 +6,7 @@ type Props = {
   report: Detail;
   now: Date;
   onDecided: (briefing: Briefing) => void;
+  onStale?: () => void;
 };
 
 const READING = {
@@ -23,7 +24,7 @@ function check(report: Detail, step: string) {
   return report.checks.find((c) => c.step === step);
 }
 
-export default function ReportDetail({ report, now, onDecided }: Props) {
+export default function ReportDetail({ report, now, onDecided, onStale }: Props) {
   const injection = check(report, "check_injection");
   const missing = check(report, "check_missing");
   const panic = check(report, "check_panic");
@@ -103,6 +104,7 @@ export default function ReportDetail({ report, now, onDecided }: Props) {
           briefing={report.briefing}
           reportReady={report.status === "ready"}
           onDecided={onDecided}
+          onStale={onStale}
         />
       )}
     </div>

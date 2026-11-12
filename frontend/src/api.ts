@@ -74,7 +74,7 @@ export type Briefing = {
   reject_reason: string | null;
 };
 
-export type DecisionResult = { ok: true; briefing: Briefing } | { ok: false; message: string };
+export type DecisionResult = { ok: true; briefing: Briefing } | { ok: false; message: string; conflict: boolean };
 
 export async function decideBriefing(
   briefingId: number,
@@ -90,13 +90,13 @@ export async function decideBriefing(
       body: JSON.stringify(reason ? { approver_name: approverName, reason } : { approver_name: approverName }),
     });
   } catch {
-    return { ok: false, message: "Could not reach the server. Try again." };
+    return { ok: false, message: "Could not reach the server. Try again.", conflict: false };
   }
   const body = await response.json().catch(() => null);
   if (response.ok) return { ok: true, briefing: body };
   const fieldMessage = body?.errors ? Object.values(body.errors)[0] : null;
   const message = fieldMessage ?? body?.detail ?? `Server error (${response.status}).`;
-  return { ok: false, message: String(message) };
+  return { ok: false, message: String(message), conflict: response.status === 409 };
 }
 
 export type CheckSummary = { step: string; flagged: boolean; reason: string; status: string };
