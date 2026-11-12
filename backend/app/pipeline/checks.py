@@ -68,7 +68,7 @@ async def run_check(llm: LLMClient, step: str, *, model: str, note: str) -> Chec
             check = CheckResult.model_validate(result.parsed.model_dump())
         else:
             check = CheckResult.model_validate_json(result.raw_text)
-    except ValueError as exc:
+    except Exception as exc:  # noqa: BLE001 - run_check must never raise, or gather would be cut short
         return _fallback(step, result, f"Invalid check reply: {exc}")
 
     return CheckOutcome(step, check.flagged, check.reason, "ok", result)

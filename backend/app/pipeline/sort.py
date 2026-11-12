@@ -56,7 +56,7 @@ async def sort_report(llm: LLMClient, *, model: str, note: str) -> SortOutcome:
             sort = Sort.model_validate(result.parsed.model_dump())
         else:
             sort = Sort.model_validate_json(result.raw_text)
-    except ValueError as exc:
+    except Exception as exc:  # noqa: BLE001 - any unusable reply falls back, so the step never raises
         return _fallback(result, f"Invalid sort reply: {exc}")
 
     return SortOutcome(subsystem=sort.subsystem, severity=sort.severity, status="ok", result=result)

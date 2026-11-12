@@ -50,6 +50,8 @@ PRICES: dict[str, Price] = {
 
 def cost_usd(model: str, *, input_tokens: int, output_tokens: int) -> Decimal:
     """Cost of one model call in USD, computed exactly with Decimal."""
+    if isinstance(input_tokens, bool) or isinstance(output_tokens, bool):
+        raise TypeError("Token counts must be integers, not bool")
     if input_tokens < 0 or output_tokens < 0:
         raise ValueError("Token counts cannot be negative")
 
@@ -77,5 +79,8 @@ def total_cost(step_costs: Iterable[Decimal | str]) -> Decimal:
     for cost in step_costs:
         if not isinstance(cost, (Decimal, str)):
             raise TypeError(f"Step costs must be Decimal or decimal strings, got {type(cost).__name__}")
-        total += Decimal(cost)
+        value = Decimal(cost)
+        if not value.is_finite() or value < 0:
+            raise ValueError(f"Step cost must be a finite, non-negative amount, got {cost!r}")
+        total += value
     return total

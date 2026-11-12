@@ -1,4 +1,5 @@
 import re
+import unicodedata
 
 # Phrases that address the system rather than describe an anomaly. Each is a backstop to
 # the model's injection check: a match flags the report for human review. Neither this
@@ -22,6 +23,16 @@ PATTERNS: dict[str, re.Pattern[str]] = {
 }
 
 
+ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff\u00ad"))
+
+
+def normalise(note: str) -> str:
+    """Fold look-alike characters (full-width letters, ligatures) and drop invisible ones,
+    so spacing tricks can't hide a phrase from the patterns."""
+    return unicodedata.normalize("NFKC", note).translate(ZERO_WIDTH)
+
+
 def prescreen(note: str) -> list[str]:
     """Names of the instruction-like patterns found in the note, in a fixed order."""
-    return [name for name, pattern in PATTERNS.items() if pattern.search(note)]
+    text = normalise(note)
+    return [name for name, pattern in PATTERNS.items() if pattern.search(text)]
