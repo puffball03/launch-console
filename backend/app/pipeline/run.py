@@ -78,7 +78,10 @@ async def run_pipeline(
     """Run every step for one report and store facts, trace and briefing. Never raises: an
     unexpected failure marks the report failed with an error card on the trace."""
     try:
-        await _run(report_id, repo, GuardedLLM(llm, timeout=timeout, retries=retries, backoff=backoff, sleep=sleep), settings)
+        # A client can say which errors are worth retrying (FoundryClient does); otherwise retry all.
+        retryable = getattr(llm, "is_retryable", lambda exc: True)
+        guard = GuardedLLM(llm, timeout=timeout, retries=retries, backoff=backoff, sleep=sleep, retryable=retryable)
+        await _run(report_id, repo, guard, settings)
     except Exception as exc:  # noqa: BLE001 - background task: record it, never crash the server
         error = f"{type(exc).__name__}: {exc}"
         try:

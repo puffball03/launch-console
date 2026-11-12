@@ -10,7 +10,7 @@ def test_provider_is_fake_when_no_api_key():
 
 
 def test_provider_is_foundry_when_api_key_is_set():
-    settings = load_settings({"ANTHROPIC_FOUNDRY_API_KEY": "test-key"})
+    settings = load_settings({"ANTHROPIC_FOUNDRY_API_KEY": "test-key", "ANTHROPIC_FOUNDRY_RESOURCE": "mc-test"})
 
     assert settings.llm_provider == "foundry"
 
@@ -52,3 +52,8 @@ def test_one_deployment_may_serve_both_roles():
     settings = load_settings({"MODEL_FAST": "mc-shared", "MODEL_SMART": "mc-shared"})
 
     assert settings.model_fast == settings.model_smart == "mc-shared"
+
+
+def test_foundry_needs_a_resource_name():
+    with pytest.raises(ValueError, match="ANTHROPIC_FOUNDRY_RESOURCE"):
+        load_settings({"ANTHROPIC_FOUNDRY_API_KEY": "test-key"})

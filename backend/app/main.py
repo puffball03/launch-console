@@ -7,24 +7,17 @@ from fastapi.staticfiles import StaticFiles
 from app.api import briefings, reports
 from app.api.errors import validation_error_handler
 from app.config import Settings, load_settings
-from app.llm.base import LLMClient, LLMResult
+from app.llm.base import LLMClient
 from app.llm.fake import FakeLLM
+from app.llm.foundry import FoundryClient
 from app.repository import ReportRepository
 
 # The built SPA is served from the same port in Docker; absent during local dev and tests.
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
-class FoundryNotReady:
-    """Stands in for the Foundry client until NAT-31: every call fails clearly, so reports end
-    briefing_failed with a readable error on the trace instead of crashing."""
-
-    async def complete(self, **kwargs) -> LLMResult:
-        raise RuntimeError("The Foundry client is not built yet (NAT-31); run without a key for the fake model.")
-
-
 def default_llm(settings: Settings) -> LLMClient:
-    return FakeLLM.demo() if settings.llm_provider == "fake" else FoundryNotReady()
+    return FakeLLM.demo() if settings.llm_provider == "fake" else FoundryClient.from_settings(settings)
 
 
 def create_app(

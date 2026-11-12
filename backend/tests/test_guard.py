@@ -104,3 +104,23 @@ async def test_each_step_is_recorded_separately():
 
 def test_guard_is_an_llm_client():
     assert isinstance(GuardedLLM(FakeLLM({})), LLMClient)
+
+
+async def test_an_error_the_client_says_is_permanent_is_not_retried():
+    sleeps = Sleeps()
+    inner = FakeLLM({"sort": failing_then([PermissionError("bad key"), OK])})
+    guard = GuardedLLM(inner, timeout=1, retries=1, backoff=0.5, sleep=sleeps, retryable=lambda e: not isinstance(e, PermissionError))
+
+    with pytest.raises(PermissionError):
+        await ask(guard)
+
+    assert guard.calls["sort"].attempts == 1
+    assert sleeps.waits == []
+
+
+async def test_a_transient_error_is_still_retried_with_a_predicate():
+    inner = FakeLLM({"sort": failing_then([TimeoutError("slow"), OK])})
+    guard = GuardedLLM(inner, timeout=1, retries=1, backoff=0, sleep=Sleeps(), retryable=lambda e: isinstance(e, TimeoutError))
+
+    assert await ask(guard) is OK
+    assert guard.calls["sort"].attempts == 2

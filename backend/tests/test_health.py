@@ -19,6 +19,6 @@ def test_health_reports_fake_provider_without_key(make_settings):
 
 
 def test_health_reports_foundry_provider_with_key(make_settings):
-    client = TestClient(create_app(make_settings(ANTHROPIC_FOUNDRY_API_KEY="test-key")))
+    client = TestClient(create_app(make_settings(ANTHROPIC_FOUNDRY_API_KEY="test-key", ANTHROPIC_FOUNDRY_RESOURCE="mc-test")))
 
     assert client.get("/api/health").json()["provider"] == "foundry"
