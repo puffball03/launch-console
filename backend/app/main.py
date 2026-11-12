@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 
-from app.api import reports
+from app.api import briefings, reports
 from app.api.errors import validation_error_handler
 from app.config import Settings, load_settings
 from app.llm.base import LLMClient, LLMResult
@@ -44,6 +44,7 @@ def create_app(
 
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.include_router(reports.router)
+    app.include_router(briefings.router)
 
     @app.get("/api/health")
     def health(request: Request) -> dict:
