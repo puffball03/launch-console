@@ -70,7 +70,13 @@ export default function ReportDetail({ report, now, onDecided }: Props) {
       {report.brief_by_at && (
         <p className="brief-by">
           Brief by {new Date(report.brief_by_at).toLocaleTimeString()} ({report.brief_by_minutes} min,{" "}
-          {report.effective_severity}) · <span>{countdown(report.brief_by_at, now)}</span>
+          {report.effective_severity})
+          {report.briefing?.status === "pending" && (
+            <>
+              {" · "}
+              <span>{countdown(report.brief_by_at, now)}</span>
+            </>
+          )}
         </p>
       )}
 
@@ -91,7 +97,13 @@ export default function ReportDetail({ report, now, onDecided }: Props) {
       )}
       {report.status === "failed" && <p className="banner banner-muted">The pipeline failed; see the trace.</p>}
       {report.briefing && (
-        <BriefingPanel briefing={report.briefing} reportReady={report.status === "ready"} onDecided={onDecided} />
+        // Keyed by briefing so the approver form never carries over to another report.
+        <BriefingPanel
+          key={report.briefing.id}
+          briefing={report.briefing}
+          reportReady={report.status === "ready"}
+          onDecided={onDecided}
+        />
       )}
     </div>
   );

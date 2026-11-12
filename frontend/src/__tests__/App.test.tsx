@@ -155,3 +155,36 @@ test("approving updates the detail and the list", async () => {
   const row = screen.getByRole("button", { name: /#4 WX/ });
   await waitFor(() => expect(within(row).getByText("Approved")).toBeInTheDocument());
 });
+
+
+test("a decision that lands after switching reports doesn't change the other report", async () => {
+  const user = userEvent.setup();
+  const server: Server = {
+    provider: "fake",
+    reports: [summary({ id: 4 }), summary({ id: 5, station: "PROP" })],
+    details: {
+      4: detail({ id: 4 }),
+      5: detail({ id: 5, station: "PROP", briefing: { ...BRIEFING, id: 12, headline: "GO: all nominal" } }),
+    },
+  };
+  const fetchMock = serve(server);
+  let finish: (r: Response) => void = () => {};
+  const base = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+    url.endsWith("/approve") ? new Promise<Response>((resolve) => (finish = resolve)) : base(url, init),
+  );
+  render(<App />);
+
+  await user.click(await screen.findByRole("button", { name: /#4 WX/ }));
+  await user.type(await screen.findByLabelText(/approver name/i), "Kim");
+  await user.click(screen.getByRole("button", { name: "Approve" }));
+  await user.click(screen.getByRole("button", { name: /#5 PROP/ }));
+  expect(await screen.findByRole("heading", { name: "GO: all nominal" })).toBeInTheDocument();
+
+  const approved = { ...BRIEFING, id: 11, status: "approved", decided_by: "Kim", decided_at: "2030-01-01T00:01:00Z" };
+  await act(async () => finish(new Response(JSON.stringify(approved), { status: 200 })));
+
+  expect(screen.getByRole("heading", { name: "GO: all nominal" })).toBeInTheDocument();
+  expect(screen.queryByText(/Approved by Kim/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+});

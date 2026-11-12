@@ -55,7 +55,8 @@ export default function App() {
   }, []);
 
   function onDecided(briefing: Briefing) {
-    setDetail((d) => (d ? { ...d, briefing, briefing_status: briefing.status } : d));
+    // A decision can land after the user has switched reports: only merge it into its own report.
+    setDetail((d) => (d && d.briefing?.id === briefing.id ? { ...d, briefing, briefing_status: briefing.status } : d));
     listReports()
       .then(setReports)
       .catch(() => {});

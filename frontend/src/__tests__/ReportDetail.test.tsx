@@ -125,3 +125,31 @@ test("a failed pipeline says so", () => {
 
   expect(screen.getByText(/pipeline failed/i)).toBeInTheDocument();
 });
+
+
+test("switching to another report starts with an empty approver form", async () => {
+  const { default: userEvent } = await import("@testing-library/user-event");
+  const user = userEvent.setup();
+  const { rerender } = render(<ReportDetail report={detail()} now={NOW} onDecided={() => {}} />);
+
+  await user.type(screen.getByLabelText(/approver name/i), "Kim");
+  await user.type(screen.getByLabelText(/reason/i), "Reason meant for report 4");
+
+  const other = detail({ id: 5, briefing: { ...BRIEFING, id: 12, headline: "GO: all nominal" } });
+  rerender(<ReportDetail report={other} now={NOW} onDecided={() => {}} />);
+
+  expect(screen.getByRole("heading", { name: "GO: all nominal" })).toBeInTheDocument();
+  expect(screen.getByLabelText(/approver name/i)).toHaveValue("");
+  expect(screen.getByLabelText(/reason/i)).toHaveValue("");
+  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+});
+
+
+test("the countdown is hidden once the briefing is decided", () => {
+  show({
+    briefing_status: "approved",
+    briefing: { ...BRIEFING, status: "approved", decided_by: "Kim", decided_at: "2026-11-12T09:01:00Z" },
+  });
+
+  expect(screen.getByText(/brief by/i)).not.toHaveTextContent("left");
+});
