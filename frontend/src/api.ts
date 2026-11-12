@@ -35,3 +35,93 @@ export async function fileReport(report: ReportInput): Promise<FileResult> {
   }
   return { ok: false, errors };
 }
+
+export type Violation = { field: string; value: number; limit: string };
+export type ReportStatus = "processing" | "ready" | "briefing_failed" | "failed";
+export type BriefingStatus = "pending" | "approved" | "rejected";
+
+export type ReportSummary = {
+  id: number;
+  engineer_name: string;
+  station: Station;
+  status: ReportStatus;
+  verdict: "go" | "no_go" | null;
+  subsystem: string | null;
+  effective_severity: "high" | "medium" | "low" | null;
+  brief_by_at: string | null;
+  flagged: boolean | null;
+  briefing_status: BriefingStatus | null;
+  created_at: string;
+};
+
+export type Briefing = {
+  id: number;
+  status: BriefingStatus;
+  headline: string;
+  situation: string;
+  impact_on_launch: string;
+  recommended_action: string;
+  open_questions: string[];
+  verdict: "go" | "no_go";
+  violations: Violation[];
+  brief_by_minutes: number;
+  brief_by_at: string;
+  rounds: number;
+  reviewer_satisfied: boolean;
+  final_feedback: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  reject_reason: string | null;
+};
+
+export type DecisionResult = { ok: true; briefing: Briefing } | { ok: false; message: string; conflict: boolean };
+
+export async function decideBriefing(
+  briefingId: number,
+  action: "approve" | "reject",
+  approverName: string,
+  reason?: string,
+): Promise<DecisionResult> {
+  let response: Response;
+  try {
+    response = await fetch(`/api/briefings/${briefingId}/${action}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(reason ? { approver_name: approverName, reason } : { approver_name: approverName }),
+    });
+  } catch {
+    return { ok: false, message: "Could not reach the server. Try again.", conflict: false };
+  }
+  const body = await response.json().catch(() => null);
+  if (response.ok) return { ok: true, briefing: body };
+  const fieldMessage = body?.errors ? Object.values(body.errors)[0] : null;
+  const message = fieldMessage ?? body?.detail ?? `Server error (${response.status}).`;
+  return { ok: false, message: String(message), conflict: response.status === 409 };
+}
+
+export type CheckSummary = { step: string; flagged: boolean; reason: string; status: string };
+
+export type ReportDetail = ReportSummary & {
+  note: string;
+  wind_knots: number;
+  temp_c: number;
+  fuel_pct: number;
+  violations: Violation[];
+  checks: CheckSummary[];
+  prescreen_hits: string[];
+  brief_by_minutes: number | null;
+  briefing: Briefing | null;
+  total_cost_usd: string;
+};
+
+export type Health = { ok: boolean; provider: "fake" | "foundry" };
+
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url} returned ${response.status}`);
+  return response.json();
+}
+
+export const listReports = () => getJson<ReportSummary[]>("/api/reports");
+export const getReport = (id: number) => getJson<ReportDetail>(`/api/reports/${id}`);
+export const getHealth = () => getJson<Health>("/api/health");
