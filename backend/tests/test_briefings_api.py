@@ -165,3 +165,30 @@ def test_only_the_approve_and_reject_endpoints_can_change_a_briefings_status():
     assert updates == [("repository.py", "UPDATE briefings")]
     assert sorted(callers) == ["api/briefings.py", "repository.py"]
     assert len(inserts) == 1 and "'pending'" in inserts[0]
+
+
+@pytest.mark.parametrize(("first", "word"), [(approve, "approved"), (reject, "rejected")])
+def test_a_second_decision_says_who_already_decided(client, first, word):
+    briefing_id = file(client)["briefing"]["id"]
+    first(client, briefing_id)
+
+    detail = approve(client, briefing_id, name="Someone Else").json()["detail"]
+
+    assert detail == f"Already {word} by Flight Director Kim."
+
+
+def test_validation_errors_say_invalid_request(client):
+    briefing_id = file(client)["briefing"]["id"]
+
+    assert approve(client, briefing_id, name="").json()["detail"] == "Invalid request"
+
+
+def test_the_report_list_carries_each_briefings_status(client):
+    decided = file(client)
+    approve(client, decided["briefing"]["id"])
+    open_report = file(client)
+
+    by_id = {r["id"]: r for r in client.get("/api/reports").json()}
+
+    assert by_id[decided["id"]]["briefing_status"] == "approved"
+    assert by_id[open_report["id"]]["briefing_status"] == "pending"

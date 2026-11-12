@@ -15,6 +15,9 @@ def _decide(request: Request, briefing_id: int, status: str, approver: str, reas
         briefing_id, status=status, decided_by=approver, decided_at=datetime.now(UTC), reason=reason
     )
     if not decided:
+        current = repo.get_briefing_by_id(briefing_id)
+        if current["status"] != "pending":
+            raise HTTPException(status_code=409, detail=f"Already {current['status']} by {current['decided_by']}.")
         raise HTTPException(
             status_code=409, detail="Only a pending briefing on a ready report can be approved or rejected"
         )

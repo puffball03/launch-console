@@ -95,3 +95,250 @@ body {
   opacity: 0.5;
   cursor: wait;
 }
+
+/* Console layout */
+.console {
+  max-width: 1200px;
+}
+
+.console-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.console-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 2fr) 3fr;
+  gap: 16px;
+}
+
+@media (max-width: 800px) {
+  .console-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* Chips and badges */
+.chip {
+  display: inline-block;
+  min-width: 52px;
+  text-align: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.chip-go {
+  background: var(--go);
+  color: #04130a;
+}
+
+.chip-no-go {
+  background: var(--no-go);
+  color: #1a0505;
+}
+
+.chip-pending {
+  background: #2a3846;
+  color: var(--muted);
+}
+
+.badge {
+  display: inline-block;
+  border: 1px solid #2a3846;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.badge-fake {
+  border-color: var(--warn);
+  color: var(--warn);
+  font-weight: 700;
+}
+
+.flag {
+  color: var(--warn);
+}
+
+/* Report list */
+.report-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.report-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 8px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.report-row:hover {
+  background: #17212c;
+}
+
+.report-row[aria-current="true"] {
+  border-color: var(--go);
+  background: #17212c;
+}
+
+.row-main {
+  flex: 1;
+}
+
+.row-when {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.row-when.overdue {
+  color: var(--no-go);
+  font-weight: 700;
+}
+
+/* Detail */
+.detail-header h2 {
+  margin-bottom: 0;
+}
+
+.banner {
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin: 12px 0;
+}
+
+.banner-flag {
+  border: 1px solid var(--warn);
+  background: rgba(245, 166, 35, 0.1);
+}
+
+.banner-muted {
+  border: 1px solid #2a3846;
+  color: var(--muted);
+}
+
+.verdict {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.violations {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  color: var(--no-go);
+}
+
+.info-badges {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.note {
+  border-left: 3px solid #2a3846;
+  margin: 12px 0;
+  padding: 4px 12px;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+/* Briefing */
+.briefing {
+  border-top: 1px solid #1f2a36;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.briefing-body dt {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 8px;
+}
+
+.briefing-body dd {
+  margin: 2px 0 0;
+}
+
+.tag-warn {
+  border-left: 3px solid var(--warn);
+  padding-left: 8px;
+}
+
+.decide {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.decide input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid #2a3846;
+  border-radius: 4px;
+  padding: 8px;
+  font: inherit;
+}
+
+.decide-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.decide-buttons button {
+  border: 0;
+  border-radius: 4px;
+  padding: 10px 18px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.decide-buttons .approve {
+  background: var(--go);
+  color: #04130a;
+}
+
+.decide-buttons .reject {
+  background: transparent;
+  color: var(--no-go);
+  border: 1px solid var(--no-go);
+}
+
+.decide-buttons button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.decision {
+  font-weight: 700;
+}
+
+.decision-approved {
+  color: var(--go);
+}
+
+.decision-rejected {
+  color: var(--no-go);
+}

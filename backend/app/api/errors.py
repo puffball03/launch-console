@@ -45,7 +45,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         loc = err.get("loc", ())
         field = str(loc[1]) if len(loc) > 1 and loc[0] == "body" else "_body"
         if field == "_body":
-            errors.setdefault(field, "Request body must be a JSON object with the report fields.")
+            errors.setdefault(field, "Request body must be a JSON object.")
         else:
             errors.setdefault(field, _message(field, err["type"], err["msg"]))
-    return JSONResponse(status_code=422, content={"detail": "Invalid report", "errors": errors})
+    return JSONResponse(status_code=422, content={"detail": "Invalid request", "errors": errors})

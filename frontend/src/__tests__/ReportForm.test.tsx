@@ -130,7 +130,7 @@ test("server 422 messages appear next to their fields", async () => {
   const user = userEvent.setup();
   const onFiled = vi.fn();
   respondWith(422, {
-    detail: "Invalid report",
+    detail: "Invalid request",
     errors: { station: "Station must be one of PROP, GNC, TELEM, RANGE, WX.", note: "Note is required." },
   });
   render(<ReportForm onFiled={onFiled} />);
@@ -149,7 +149,7 @@ test("server 422 messages appear next to their fields", async () => {
 
 test("a server error that isn't about one field is shown above the button", async () => {
   const user = userEvent.setup();
-  respondWith(422, { detail: "Invalid report", errors: { _body: "Request body must be a JSON object." } });
+  respondWith(422, { detail: "Invalid request", errors: { _body: "Request body must be a JSON object." } });
   render(<ReportForm onFiled={() => {}} />);
 
   await fillValidReport(user);

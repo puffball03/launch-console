@@ -80,7 +80,13 @@ class ReportRepository:
 
     def list(self) -> list[dict]:
         with connect(self.db_path) as conn:
-            rows = conn.execute("SELECT * FROM reports ORDER BY created_at DESC, id DESC").fetchall()
+            rows = conn.execute(
+                """
+                SELECT reports.*, briefings.status AS briefing_status
+                FROM reports LEFT JOIN briefings ON briefings.report_id = reports.id
+                ORDER BY reports.created_at DESC, reports.id DESC
+                """
+            ).fetchall()
         return [_report(row) for row in rows]
 
     def set_status(self, report_id: int, status: str) -> None:
