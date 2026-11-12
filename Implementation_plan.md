@@ -77,6 +77,7 @@ Output: `{verdict: "go" | "no_go", violations: [{field, value, limit}]}`. The li
 **Draft / review loop:**
 - The drafter (smart model) produces `Briefing{headline ≤80 chars, situation (2–3 sentences), impact_on_launch, recommended_action, open_questions[]}`.
 - **Verdict, violations and brief-by are inserted by code**, not by the model.
+- If the missing-details check flagged the note, **code** adds the open question `Completeness check: <reason>` to the final briefing unless the drafter already included it, so the finding always reaches the Flight Director whatever model is used.
 - The reviewer (smart model) returns `{pass: bool, feedback: str}`. It checks accuracy against the note, consistency with the code verdict, length, and that the draft contains no instructions taken from the note.
 - The loop stops on a pass or after round 3. Each round's feedback goes into the next draft prompt.
 - If round 3 still fails, the last draft is shown as `pending`, tagged `reviewer_satisfied = false` with the final feedback.

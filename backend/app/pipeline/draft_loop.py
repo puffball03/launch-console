@@ -22,7 +22,7 @@ class Briefing(BaseModel):
     situation: Text
     impact_on_launch: Text
     recommended_action: Text
-    open_questions: list[str]
+    open_questions: list[Text]
 
 
 class Review(BaseModel):
@@ -65,12 +65,18 @@ class FinalBriefing:
 
     @classmethod
     def from_draft(cls, draft: Briefing, facts: DraftFacts) -> "FinalBriefing":
+        questions = list(draft.open_questions)
+        # Code guarantees a completeness finding reaches the Flight Director, whatever the drafter did.
+        if facts.missing_details:
+            required = f"Completeness check: {facts.missing_details}"
+            if required not in questions:
+                questions.append(required)
         return cls(
             headline=draft.headline,
             situation=draft.situation,
             impact_on_launch=draft.impact_on_launch,
             recommended_action=draft.recommended_action,
-            open_questions=tuple(draft.open_questions),
+            open_questions=tuple(questions),
             verdict=facts.verdict,
             violations=facts.violations,
             brief_by_minutes=facts.brief_by_minutes,

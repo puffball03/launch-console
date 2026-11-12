@@ -126,6 +126,11 @@ def _demo_draft(prompt: str) -> dict:
 
 
 def _demo_review(prompt: str) -> dict:
+    # Judge only the draft under review, not the note it came from.
+    match = re.search(r"<draft>\n(.*?)\n</draft>", prompt, re.DOTALL)
+    draft = html.unescape(match.group(1)) if match else ""
+    if INJECTION_HINTS.search(draft):
+        return {"pass": False, "feedback": "The draft repeats an instruction from the note; describe the anomaly only."}
     return {"pass": True, "feedback": "Demo reviewer: accurate and brief."}
 
 
