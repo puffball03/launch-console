@@ -4,7 +4,9 @@ import re
 # the model's injection check: a match flags the report for human review. Neither this
 # nor the model check can change the verdict, which comes only from rules/limits.py.
 PATTERNS: dict[str, re.Pattern[str]] = {
-    "system prefix": re.compile(r"(?:^|[.!?\n]\s*|<)\s*system\s*:", re.IGNORECASE),
+    # "system:" starting a sentence or clause (any case), or an all-caps "SYSTEM:" anywhere.
+    # "Propulsion system: nominal" stays clean because "system" follows a word there.
+    "system prefix": re.compile(r"(?i:(?:^|[.!?\n,;<])\s*system\s*:)|\bSYSTEM\s*:"),
     "ignore instructions": re.compile(
         r"\b(?:ignore|disregard|forget)\s+(?:all\s+|any\s+|the\s+)?"
         r"(?:previous\s+|prior\s+|above\s+|earlier\s+|preceding\s+)?"

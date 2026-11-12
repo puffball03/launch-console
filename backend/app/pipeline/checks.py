@@ -83,8 +83,9 @@ class ChecksOutcome:
     def flagged(self) -> bool:
         """Sent to human review when the injection check or the code pre-screen fires.
         A failed injection check counts as flagged. Missing details and panic are informational."""
-        injection = next(c for c in self.checks if c.step == "check_injection")
-        return injection.flagged or bool(self.prescreen_hits)
+        injection = next((c for c in self.checks if c.step == "check_injection"), None)
+        # No injection result at all fails closed: the report goes to review.
+        return injection is None or injection.flagged or bool(self.prescreen_hits)
 
 
 async def run_checks(llm: LLMClient, *, model: str, note: str) -> ChecksOutcome:

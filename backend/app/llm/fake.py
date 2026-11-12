@@ -55,6 +55,8 @@ class FakeLLM:
         raise UnscriptedStepError(f"FakeLLM has no script for step {step!r}")
 
 
+# Deliberately separate from app/rules/injection.py: this stands in for the *model's*
+# injection check, which the code pre-screen backs up independently.
 INJECTION_HINTS = re.compile(
     r"ignore (all |any )?(previous|prior|above) instructions|you are now|system:|set (the )?verdict",
     re.IGNORECASE,

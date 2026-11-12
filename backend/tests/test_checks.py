@@ -78,14 +78,19 @@ async def test_unusable_reply_keeps_its_tokens():
 
 
 class SlowLLM:
-    """Wraps FakeLLM and waits before each answer, like a real model call."""
+    """Wraps FakeLLM, waits before each answer like a real model call, and records when
+    each call started and finished."""
 
     def __init__(self, inner: FakeLLM, delay: float):
         self.inner, self.delay = inner, delay
+        self.spans: list[tuple[float, float]] = []
 
     async def complete(self, **kwargs):
+        started = time.perf_counter()
         await asyncio.sleep(self.delay)
-        return await self.inner.complete(**kwargs)
+        result = await self.inner.complete(**kwargs)
+        self.spans.append((started, time.perf_counter()))
+        return result
 
 
 def all_clear() -> FakeLLM:
@@ -93,14 +98,15 @@ def all_clear() -> FakeLLM:
 
 
 async def test_three_checks_run_at_the_same_time():
-    llm = SlowLLM(all_clear(), delay=0.2)
+    llm = SlowLLM(all_clear(), delay=0.05)
 
-    started = time.perf_counter()
     outcomes = await run_checks(llm, model="mc-fast", note=NOTE)
-    elapsed = time.perf_counter() - started
 
-    assert len(outcomes.checks) == 3
-    assert elapsed < 0.4, f"took {elapsed:.2f}s; sequential would be ~0.6s"
+    assert len(outcomes.checks) == len(llm.spans) == 3
+    # All three were in flight together: every call started before any call finished.
+    latest_start = max(start for start, _ in llm.spans)
+    earliest_end = min(end for _, end in llm.spans)
+    assert latest_start < earliest_end
 
 
 async def test_outcomes_come_back_in_a_fixed_order():
@@ -222,3 +228,14 @@ async def test_demo_mode_checks(note, missing, panic, flagged):
     assert by_step["check_missing"].flagged is missing
     assert by_step["check_panic"].flagged is panic
     assert outcome.flagged is flagged
+
+
+def test_missing_injection_result_counts_as_flagged():
+    from app.pipeline.checks import CheckOutcome, ChecksOutcome
+
+    others = (
+        CheckOutcome("check_missing", False, "ok", "ok", None),
+        CheckOutcome("check_panic", False, "ok", "ok", None),
+    )
+
+    assert ChecksOutcome(checks=others, prescreen_hits=()).flagged is True
