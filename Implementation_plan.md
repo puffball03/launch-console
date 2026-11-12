@@ -89,7 +89,9 @@ Output: `{verdict: "go" | "no_go", violations: [{field, value, limit}]}`. The li
 **Failures:**
 - Each model call has a 30 s timeout and 1 retry with backoff.
 - Sort and checks fall back as above.
-- If a draft call fails outright, report status is `briefing_failed`: verdict, violations and brief-by are still shown and nothing is approvable.
+- If there is no usable **first** draft, report status is `briefing_failed`: verdict, violations and brief-by are still shown and nothing is approvable.
+- If a later draft (round 2 or 3) fails, the last good draft is kept as `pending` with `reviewer_satisfied = false` and the reviewer's feedback, so the Flight Director still has a briefing to read.
+- If a review fails, the loop stops and the draft is kept as `pending`, marked not passed (`Review failed: …`).
 - On startup, any report still `processing` is marked `failed`.
 
 **Cost:** the price table lives in code (`pricing.py`), keyed by model, USD per million input/output tokens, computed with `Decimal`. Report cost = sum over its steps. Look up current Haiku 5.5 / Sonnet 5.5 prices when the pricing ticket starts.

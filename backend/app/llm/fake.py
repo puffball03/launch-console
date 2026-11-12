@@ -50,8 +50,9 @@ class FakeLLM:
                 return scripted(call)
             return scripted
 
-        # draft_2 and review_3 use the "draft" and "review" rules.
-        rule = DEMO_RULES.get(step) or DEMO_RULES.get(re.sub(r"_\d+$", "", step))
+        # Only the numbered loop steps (draft_2, review_3) fall back to their base rule.
+        numbered = re.fullmatch(r"(draft|review)_\d+", step)
+        rule = DEMO_RULES.get(step) or (DEMO_RULES.get(numbered.group(1)) if numbered else None)
         if self.demo_mode and rule is not None:
             return _demo_result(call, rule(call.user))
 
@@ -111,7 +112,9 @@ def _demo_check_panic(note: str) -> dict:
 def _demo_draft(prompt: str) -> dict:
     match = re.search(r"<note>\n(.*)\n</note>", prompt, re.DOTALL)
     note = html.unescape(match.group(1)) if match else ""
-    verdict = "NO-GO" if "verdict: no_go" in prompt else "GO"
+    # Read the verdict from the code-written facts block only; the note could contain the phrase.
+    facts = re.search(r"<facts>\n(.*?)\n</facts>", prompt, re.DOTALL)
+    verdict = "NO-GO" if facts and "verdict: no_go" in facts.group(1) else "GO"
     first_sentence = re.split(r"(?<=[.!?])\s", note.strip(), maxsplit=1)[0]
     return {
         "headline": f"{verdict}: {first_sentence}"[:80],

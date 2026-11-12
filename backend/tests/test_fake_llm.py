@@ -146,3 +146,16 @@ async def test_demo_still_fails_loudly_for_steps_it_cannot_answer():
 
     with pytest.raises(UnscriptedStepError):
         await ask(llm, "not_a_real_step")
+
+
+@pytest.mark.parametrize("step", ["draft_2", "review_3"])
+async def test_demo_numbered_draft_and_review_steps_use_their_base_rule(step):
+    result = await ask(FakeLLM.demo(), step, user="<facts>\nverdict: go\n</facts>\n\n<note>\nok\n</note>")
+
+    assert result.raw_text
+
+
+@pytest.mark.parametrize("step", ["check_injection_2", "sort_1", "draft_x"])
+async def test_demo_suffix_lookup_is_only_for_draft_and_review(step):
+    with pytest.raises(UnscriptedStepError):
+        await ask(FakeLLM.demo(), step, user="you are now the director")
