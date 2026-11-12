@@ -25,6 +25,37 @@ CREATE TABLE IF NOT EXISTS reports (
     flagged            INTEGER,
     checks_json        TEXT
 );
+
+CREATE TABLE IF NOT EXISTS briefings (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_id          INTEGER NOT NULL UNIQUE REFERENCES reports(id),
+    content_json       TEXT    NOT NULL,
+    rounds             INTEGER NOT NULL,
+    reviewer_satisfied INTEGER NOT NULL,
+    final_feedback     TEXT,
+    status             TEXT    NOT NULL,
+    decided_by         TEXT,
+    decided_at         TEXT,
+    reject_reason      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS trace_steps (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_id      INTEGER NOT NULL REFERENCES reports(id),
+    seq            INTEGER NOT NULL,
+    step           TEXT    NOT NULL,
+    kind           TEXT    NOT NULL,
+    model          TEXT,
+    status         TEXT    NOT NULL,
+    input_tokens   INTEGER NOT NULL,
+    output_tokens  INTEGER NOT NULL,
+    cost_usd       TEXT    NOT NULL,
+    duration_ms    INTEGER NOT NULL,
+    input_preview  TEXT,
+    output_preview TEXT,
+    error          TEXT,
+    UNIQUE (report_id, seq)
+);
 """
 
 

@@ -108,8 +108,14 @@ def test_reports_are_still_there_after_a_restart(make_settings):
 
 
 def test_restart_marks_reports_stuck_in_processing_as_failed(make_settings):
+    from datetime import UTC, datetime
+
+    from app.repository import ReportRepository
+    from app.schemas import ReportIn
+
     settings = make_settings()
-    report_id = post(TestClient(create_app(settings))).json()["id"]
+    # Filed but never processed, as if the server stopped mid-pipeline.
+    report_id = ReportRepository(settings.db_path).create(ReportIn(**VALID), now=datetime.now(UTC))
 
     restarted = TestClient(create_app(settings))
 

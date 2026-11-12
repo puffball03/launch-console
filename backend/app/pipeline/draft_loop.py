@@ -225,7 +225,8 @@ async def run_draft_loop(llm: LLMClient, *, model: str, note: str, facts: DraftF
         )
         steps.append(step)
         if verdict is None:
-            passed, feedback = False, f"Review failed: {step.error}"
+            # The error can quote the model's raw reply, so it stays on the trace step only.
+            passed, feedback = False, "Review failed; see the trace."
             break
         rounds = round_no
         passed, feedback = verdict.passed, verdict.feedback
