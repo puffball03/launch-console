@@ -59,7 +59,18 @@ def test_pipeline_facts_are_saved_on_the_report(repo, report_id):
 def test_a_new_report_has_no_facts_yet(repo, report_id):
     stored = repo.get(report_id)
 
-    assert stored["violations"] == [] and stored["checks"] == [] and stored["flagged"] is False
+    assert stored["violations"] == [] and stored["checks"] == []
+    # Never screened is not the same as "not flagged".
+    assert stored["flagged"] is None
+
+
+def test_a_screened_clean_report_is_not_flagged(repo, report_id):
+    repo.save_facts(
+        report_id, verdict="go", violations=[], subsystem="other", severity="low", effective_severity="low",
+        brief_by_minutes=30, brief_by_at="2026-11-12T09:30:00+00:00", flagged=False, checks=[], prescreen_hits=[],
+    )
+
+    assert repo.get(report_id)["flagged"] is False
 
 
 def test_trace_rows_come_back_in_the_order_they_were_added(repo, report_id):

@@ -165,3 +165,20 @@ async def test_an_unexpected_failure_marks_the_report_failed_without_raising(rep
     last = repo.list_trace(report_id)[-1]
     assert (last["step"], last["status"]) == ("pipeline", "error")
     assert "disk full" in last["error"]
+
+
+async def test_if_recording_the_failure_also_fails_it_is_logged_not_raised(repo, settings, monkeypatch, caplog):
+    report_id = file(repo)
+
+    def db_down(*args, **kwargs):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(repo, "save_facts", db_down)
+    monkeypatch.setattr(repo, "set_status", db_down)
+
+    with caplog.at_level("ERROR", logger="app.pipeline.run"):
+        await go(repo, settings, report_id)  # must not raise
+
+    messages = " ".join(r.getMessage() for r in caplog.records)
+    assert f"report {report_id}" in messages
+    assert "database unavailable" in caplog.text

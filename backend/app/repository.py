@@ -33,7 +33,8 @@ def _report(row) -> dict:
     report["checks"] = checks.get("checks", [])
     report["prescreen_hits"] = checks.get("prescreen_hits", [])
     report["violations"] = json.loads(report.pop("violations_json") or "[]")
-    report["flagged"] = bool(report["flagged"])
+    # None until the checks have run: never screened is not the same as "not flagged".
+    report["flagged"] = None if report["flagged"] is None else bool(report["flagged"])
     return report
 
 

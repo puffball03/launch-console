@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
@@ -16,6 +17,8 @@ from app.pricing import cost_for_role
 from app.repository import ReportRepository, TraceRow
 from app.rules.brief_by import brief_by
 from app.rules.limits import check_limits
+
+log = logging.getLogger(__name__)
 
 
 def _plain(amount: Decimal) -> str:
@@ -77,11 +80,12 @@ async def run_pipeline(
     try:
         await _run(report_id, repo, GuardedLLM(llm, timeout=timeout, retries=retries, backoff=backoff, sleep=sleep), settings)
     except Exception as exc:  # noqa: BLE001 - background task: record it, never crash the server
-        repo.set_status(report_id, "failed")
-        repo.add_trace_step(
-            report_id,
-            TraceRow("pipeline", "code", None, "error", 0, 0, "0", 0, None, None, f"{type(exc).__name__}: {exc}"),
-        )
+        error = f"{type(exc).__name__}: {exc}"
+        try:
+            repo.set_status(report_id, "failed")
+            repo.add_trace_step(report_id, TraceRow("pipeline", "code", None, "error", 0, 0, "0", 0, None, None, error))
+        except Exception:  # noqa: BLE001 - e.g. the database is down; the next start marks it failed
+            log.exception("Pipeline failed for report %s (%s) and the failure could not be recorded", report_id, error)
 
 
 async def _run(report_id: int, repo: ReportRepository, guard: GuardedLLM, settings: Settings) -> None:
