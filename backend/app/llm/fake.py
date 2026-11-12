@@ -1,3 +1,4 @@
+import html
 import json
 import re
 from collections.abc import Callable, Mapping
@@ -49,8 +50,11 @@ class FakeLLM:
                 return scripted(call)
             return scripted
 
-        if self.demo_mode and step in DEMO_RULES:
-            return _demo_result(call, DEMO_RULES[step](call.user))
+        # Only the numbered loop steps (draft_2, review_3) fall back to their base rule.
+        numbered = re.fullmatch(r"(draft|review)_\d+", step)
+        rule = DEMO_RULES.get(step) or (DEMO_RULES.get(numbered.group(1)) if numbered else None)
+        if self.demo_mode and rule is not None:
+            return _demo_result(call, rule(call.user))
 
         raise UnscriptedStepError(f"FakeLLM has no script for step {step!r}")
 
@@ -105,11 +109,38 @@ def _demo_check_panic(note: str) -> dict:
     return {"flagged": False, "reason": "The tone is factual."}
 
 
+def _demo_draft(prompt: str) -> dict:
+    match = re.search(r"<note>\n(.*)\n</note>", prompt, re.DOTALL)
+    note = html.unescape(match.group(1)) if match else ""
+    # Read the verdict from the code-written facts block only; the note could contain the phrase.
+    facts = re.search(r"<facts>\n(.*?)\n</facts>", prompt, re.DOTALL)
+    verdict = "NO-GO" if facts and "verdict: no_go" in facts.group(1) else "GO"
+    first_sentence = re.split(r"(?<=[.!?])\s", note.strip(), maxsplit=1)[0]
+    return {
+        "headline": f"{verdict}: {first_sentence}"[:80],
+        "situation": note.strip()[:300] or "No details given.",
+        "impact_on_launch": "Launch limits are violated." if verdict == "NO-GO" else "No launch limit is violated.",
+        "recommended_action": "Hold and reassess." if verdict == "NO-GO" else "Continue and monitor.",
+        "open_questions": [],
+    }
+
+
+def _demo_review(prompt: str) -> dict:
+    # Judge only the draft under review, not the note it came from.
+    match = re.search(r"<draft>\n(.*?)\n</draft>", prompt, re.DOTALL)
+    draft = html.unescape(match.group(1)) if match else ""
+    if INJECTION_HINTS.search(draft):
+        return {"pass": False, "feedback": "The draft repeats an instruction from the note; describe the anomaly only."}
+    return {"pass": True, "feedback": "Demo reviewer: accurate and brief."}
+
+
 DEMO_RULES: dict[str, Callable[[str], dict]] = {
     "sort": _demo_sort,
     "check_injection": _demo_check_injection,
     "check_missing": _demo_check_missing,
     "check_panic": _demo_check_panic,
+    "draft": _demo_draft,
+    "review": _demo_review,
 }
 
 
