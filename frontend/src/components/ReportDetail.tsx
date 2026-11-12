@@ -1,6 +1,7 @@
 import type { Briefing, ReportDetail as Detail, Violation } from "../api";
 import BriefingPanel from "./BriefingPanel";
 import { countdown, VerdictChip } from "./ReportList";
+import TracePanel from "./TracePanel";
 
 type Props = {
   report: Detail;
@@ -107,6 +108,7 @@ export default function ReportDetail({ report, now, onDecided, onStale }: Props)
           onStale={onStale}
         />
       )}
+      <TracePanel trace={report.trace} totalCostUsd={report.total_cost_usd} />
     </div>
   );
 }

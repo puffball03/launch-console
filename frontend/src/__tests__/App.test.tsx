@@ -23,7 +23,7 @@ function detail(over: Partial<ReportDetail> = {}): ReportDetail {
   return {
     ...summary(), note: "Gusts at the tower.", wind_knots: 30, temp_c: 10, fuel_pct: 99,
     violations: [{ field: "wind_knots", value: 30, limit: "<= 25" }], checks: [], prescreen_hits: [],
-    brief_by_minutes: 5, briefing: BRIEFING, total_cost_usd: "0.002", ...over,
+    brief_by_minutes: 5, briefing: BRIEFING, trace: [], total_cost_usd: "0.002", ...over,
   };
 }
 

@@ -39,9 +39,11 @@ def get_report(report_id: int, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="Report not found")
     trace = repo.list_trace(report_id)
     total = total_cost(step["cost_usd"] for step in trace)
+    briefing = repo.get_briefing(report_id)
     return {
         **report,
-        "briefing": repo.get_briefing(report_id),
+        "briefing_status": briefing["status"] if briefing else None,
+        "briefing": briefing,
         "trace": trace,
         "total_cost_usd": format(total.normalize(), "f"),
     }
